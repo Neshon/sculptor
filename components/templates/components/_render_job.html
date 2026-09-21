@@ -1,0 +1,40 @@
+{% comment %}
+  Состояние последней заявки на рендер картинки посадочного места.
+
+  Рендер идёт в фоне, и без этого блока загрузка выглядела бы так: файл
+  отправили, картинки нет, почему — непонятно. Показываем только то, что
+  требует внимания: заявку в работе и неудачу. Удачная заявка видна и так —
+  по самой картинке.
+
+  Неудачу — только там, где её можно исправить (show_failures): на
+  странице загрузки. В карточке она висела бы до следующей удачной
+  загрузки и мешала читать то, ради чего карточку открыли.
+{% endcomment %}
+{% if job %}
+  {% if job.is_active %}
+    <div class="alert" role="status">
+      {% if job.looks_stuck %}
+        <b>Картинка давно ждёт очереди.</b>
+        Модель {{ job.source_name|default:"" }} принята {{ job.created|date:"d.m.Y H:i" }},
+        но рендер так и не начался — похоже, обработчик задач не запущен
+        (<span class="mono">manage.py db_worker</span>).
+      {% elif job.looks_crashed %}
+        <b>Рендер не закончился.</b>
+        Модель {{ job.source_name|default:"" }} начали рисовать
+        {{ job.created|date:"d.m.Y H:i" }}, но процесс, похоже, упал — так бывает
+        на повреждённом файле. Загрузите модель ещё раз; подробности — в
+        <span class="mono">step_queue/render.log</span>.
+      {% else %}
+        <b>Картинка готовится.</b>
+        Модель {{ job.source_name|default:"" }} {{ job.get_status_display }}
+        с {{ job.created|date:"H:i" }}. Обновите страницу через минуту.
+      {% endif %}
+    </div>
+  {% elif show_failures and job.status == "failed" %}
+    <div class="alert alert--error" role="alert">
+      <b>Последняя модель не отрисовалась.</b>
+      {{ job.source_name|default:"Модель" }}, {{ job.created|date:"d.m.Y H:i" }}:
+      {{ job.message }}
+    </div>
+  {% endif %}
+{% endif %}

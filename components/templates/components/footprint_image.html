@@ -1,0 +1,103 @@
+{% extends "components/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if image %}Изображение{% else %}Добавить изображение{% endif %} · {{ object.display_title }}{% endblock %}
+
+{% block content %}
+<div class="legend">
+  <div class="legend__eyebrow">
+    <a href="{% url 'components:list' category.slug %}">{{ category.table }}</a> ·
+    <a href="{{ object.get_absolute_url }}">{{ object.display_title }}</a>
+  </div>
+  <div class="legend__row">
+    <h1>{% if image %}Изображение{% else %}Добавить изображение{% endif %}</h1>
+    {% if footprint %}<span class="chip chip--table">{{ footprint }}</span>{% endif %}
+    {# кнопки стоят вне <form>, поэтому связаны с ней атрибутом form= #}
+    <span class="legend__actions">
+      <a class="btn btn--ghost" href="{{ object.get_absolute_url }}">Отменить</a>
+      {% if footprint %}
+        <button class="btn btn--primary" type="submit" form="image-form">
+          {% if image %}Сохранить{% else %}Добавить{% endif %}
+        </button>
+      {% endif %}
+    </span>
+  </div>
+</div>
+
+{% if form.errors %}
+  <div class="alert alert--error" role="alert">
+    <b>Не сохранено.</b>
+    <ul>
+      {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+      {% for field in form %}
+        {% for error in field.errors %}
+          <li><a href="#{{ field.id_for_label }}">{{ field.label }}: {{ error }}</a></li>
+        {% endfor %}
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{% include "components/_render_job.html" with show_failures=True %}
+
+{% if not footprint %}
+  {% comment %}
+    Картинка принадлежит посадочному месту, а его нет: записать её не к
+    чему. Форму не показываем вовсе — иначе человек выберет файл, подождёт
+    рендер и только потом узнает, что сохранить некуда.
+  {% endcomment %}
+  <div class="panel">
+    <div class="empty">
+      <h2>Не указано посадочное место</h2>
+      <p class="muted">Картинка хранится у посадочного места и общая для всех
+         компонентов на нём, а у этого компонента не заполнен Allegro PCB
+         Footprint.</p>
+      <a class="btn btn--primary" href="{% url 'components:edit' category.slug object.pk %}">Заполнить</a>
+    </div>
+  </div>
+{% else %}
+  <form method="post" enctype="multipart/form-data" id="image-form" novalidate>
+    {% csrf_token %}
+    <div class="panel">
+      <div class="section__head">изображение посадочного места</div>
+
+      <div class="stepform">
+        {% if image %}
+          <a class="stepform__shot shot__link" href="{{ image.image.url }}">
+            <img src="{{ image.image.url }}" alt="Посадочное место {{ footprint }}">
+          </a>
+        {% else %}
+          <div class="stepform__shot stepform__shot--empty">нет изображения</div>
+        {% endif %}
+
+        <div class="stepform__side">
+          {{ form.step_file|as_crispy_field }}
+          {% if image %}
+            {{ form.drop_image|as_crispy_field }}
+          {% endif %}
+
+          <div class="hints">
+            {% comment %}
+              Картинка общая для всех компонентов на этом месте. Сказать об
+              этом нужно до сохранения: иначе замена модели из одной
+              карточки незаметно меняет вид десятка других.
+            {% endcomment %}
+            {% if footprint_usage > 1 %}
+              <div>Картинка общая для всех компонентов с посадочным местом
+                   <span class="mono">{{ footprint }}</span> — их
+                   <b>{{ footprint_usage }}</b>.
+                   {% if image %}Новый файл заменит её у всех.{% else %}Она
+                   появится у всех сразу.{% endif %}</div>
+            {% endif %}
+            {% if image %}
+              <div>Сейчас загружено из
+                   <span class="mono">{{ image.source_name|default:"—" }}</span>,
+                   {{ image.created|date:"d.m.Y" }}.</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+{% endif %}
+{% endblock %}
