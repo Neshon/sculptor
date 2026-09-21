@@ -32,6 +32,12 @@ MODULES = (
 class Command(BaseCommand):
     help = "Проверяет, готово ли окружение к рендеру STEP"
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--render", action="store_true",
+            help="Нарисовать пробную фигуру: проверить не только пакеты, "
+                 "но и то, что VTK есть где рисовать")
+
     def handle(self, *args, **options):
         self.stdout.write("Интерпретатор:")
         self.stdout.write(f"  {sys.executable}")
@@ -64,6 +70,8 @@ class Command(BaseCommand):
         self.stdout.write("")
         if not failures:
             self._check_classes()
+            if options["render"]:
+                self._check_render()
             return
 
         self.stdout.write(self.style.WARNING("Чего не хватает и что делать:"))
@@ -130,3 +138,56 @@ class Command(BaseCommand):
         self.stdout.write(
             "Добавьте нужный модуль в OCCT_NAMES в components/step.py — "
             "поиск идёт по списку, лишние варианты не мешают.")
+
+    def _check_render(self):
+        """Рисует шар в файл — так же, как рисуется модель.
+
+        Импорт пакетов проходит и там, где рисовать нечем: на сервере без
+        экрана VTK загружается, а падает только при создании окна, даже
+        невидимого. Эта проверка доходит ровно до того места, где падает
+        настоящий рендер.
+
+        Экран поднимается так же, как перед настоящим рендером
+        (:func:`components.step.ensure_display`), — проверка идёт тем же
+        путём, что и работа.
+        """
+        import os
+        import tempfile
+        from pathlib import Path
+
+        from components.step import ensure_display
+
+        self.stdout.write("")
+        self.stdout.write("Пробный рендер:")
+        before = os.environ.get("DISPLAY")
+        ready = ensure_display()
+        after = os.environ.get("DISPLAY")
+        if before:
+            self.stdout.write(f"  экран: {before}")
+        elif ready and after:
+            self.stdout.write(f"  экрана не было — поднят виртуальный {after}")
+        else:
+            self.stdout.write(self.style.ERROR(
+                "  экрана нет, и виртуальный (Xvfb) не запустился — "
+                "образ собран без слоя рендера?"))
+            return
+
+        try:
+            import pyvista as pv
+
+            with tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "probe.png"
+                plotter = pv.Plotter(off_screen=True, window_size=(200, 150))
+                plotter.add_mesh(pv.Sphere())
+                plotter.screenshot(str(target))
+                plotter.close()
+                size = target.stat().st_size
+        except Exception as exc:  # noqa: BLE001 — ровно это и проверяем
+            self.stdout.write(self.style.ERROR(f"  не удалось: {exc}"))
+            self.stdout.write(
+                "  Экран есть, а нарисовать не вышло — чаще всего нет "
+                "программного OpenGL (libgl1-mesa-dri, libglx-mesa0).")
+            return
+
+        self.stdout.write(self.style.SUCCESS(
+            f"  получилось: картинка {size} байт. Рендер моделей работает."))

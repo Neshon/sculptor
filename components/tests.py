@@ -1523,3 +1523,33 @@ class RenderDispatchTests(SimpleTestCase):
         # того, сколько рисуется модель
         popen.return_value.wait.assert_not_called()
         self.assertTrue((directory / "render.log").exists())
+
+
+class RenderDisplayTests(SimpleTestCase):
+    """Рендер сам даёт VTK экран, если его нет.
+
+    Проверяется всё, кроме запуска самого Xvfb: его здесь нет, а решение,
+    поднимать ли экран, — главное, в чём можно ошибиться.
+    """
+
+    def test_existing_display_is_used_as_is(self):
+        with mock.patch.dict("os.environ", {"DISPLAY": ":0"}), \
+                mock.patch("components.step.subprocess.Popen") as popen:
+            self.assertTrue(step.ensure_display())
+        popen.assert_not_called()
+
+    def test_without_xvfb_there_is_nowhere_to_draw(self):
+        # образ без слоя рендера: сказать об этом, а не падать в VTK
+        import os
+
+        if os.name == "nt":
+            self.skipTest("в Windows экран есть всегда")
+        with mock.patch.dict("os.environ", {}, clear=True), \
+                mock.patch("components.step.shutil.which", return_value=None):
+            self.assertFalse(step.ensure_display())
+
+    def test_windows_needs_no_virtual_display(self):
+        with mock.patch("components.step.os.name", "nt"), \
+                mock.patch("components.step.subprocess.Popen") as popen:
+            self.assertTrue(step.ensure_display())
+        popen.assert_not_called()

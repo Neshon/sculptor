@@ -23,7 +23,11 @@
 строк ImportError на старте. Как их поставить — в docs/components.md.
 """
 
+import atexit
+import os
 import re
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -268,6 +272,65 @@ def save_to_queue(upload):
     return name
 
 
+# Виртуальный экран, поднятый этим процессом. Один на процесс: воркер
+# рисует много моделей подряд, и запускать экран на каждую незачем
+_XVFB = None
+
+
+def ensure_display(timeout=15):
+    """Даёт VTK экран, если его нет. ``True`` — рисовать есть где.
+
+    На сервере без экрана VTK падает при первой же попытке создать окно,
+    даже невидимое: сначала ищет X-сервер по ``DISPLAY``, потом EGL и
+    OSMesa, и если ничего нет — рисовать ему нечем. Здесь поднимается
+    виртуальный X-сервер (Xvfb) прямо из процесса, который будет рисовать.
+
+    Прежде экран поднимала обёртка ``xvfb-run`` вокруг команды. Этого
+    мало: рисуют и воркер, и отдельный процесс, и команда проверки, и
+    стоит одному из них запуститься без обёртки — рендер падает. Когда
+    экран поднимает сам рендер, кто и как его запустил, неважно.
+
+    Номер экрана выбирает Xvfb (``-displayfd``) — так два процесса,
+    рисующие одновременно, не столкнутся на одном номере. В Windows и там,
+    где экран уже есть, ничего не делается.
+    """
+    global _XVFB
+
+    if os.name == "nt" or os.environ.get("DISPLAY"):
+        return True
+    binary = shutil.which("Xvfb")
+    if not binary:
+        return False
+
+    import select
+
+    read_fd, write_fd = os.pipe()
+    try:
+        process = subprocess.Popen(
+            [binary, "-displayfd", str(write_fd), "-screen", "0",
+             "1280x1024x24", "-nolisten", "tcp"],
+            pass_fds=(write_fd,), stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True)
+    finally:
+        os.close(write_fd)
+
+    # Xvfb пишет номер экрана, когда готов принимать клиентов. Не дождались
+    # или он умер — рисовать не на чем, и лучше сказать это сразу
+    number = ""
+    with os.fdopen(read_fd) as reader:
+        if select.select([reader], [], [], timeout)[0]:
+            number = reader.readline().strip()
+    if not number:
+        process.kill()
+        return False
+
+    os.environ["DISPLAY"] = f":{number}"
+    _XVFB = process
+    atexit.register(process.terminate)
+    return True
+
+
 class StepRenderError(Exception):
     """Картинку получить не удалось. Текст показывается человеку."""
 
@@ -305,6 +368,12 @@ def render_file(path):
             f"Проверьте командой manage.py check_step_render — она покажет, "
             f"каким интерпретатором работает приложение и что именно не "
             f"импортируется") from exc
+
+    if not ensure_display():
+        raise StepRenderError(
+            "Негде рисовать: на сервере нет экрана, а виртуальный (Xvfb) "
+            "не запустился. Нужен образ со слоем рендера — WITH_STEP=true "
+            "(см. docs/components.md, «Установка»)")
 
     # Классы OpenCascade ищутся отдельно: их расположение зависит от сборки
     occt = occt_classes()

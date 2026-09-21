@@ -45,13 +45,22 @@ RUN pip install --no-index --find-links=/wheels -r requirements.txt \
 #
 #   WITH_STEP=true docker compose build
 #
-# Системные библиотеки — для VTK на сервере без экрана.
+# Системные пакеты — для VTK на сервере без экрана:
+#   xvfb                          виртуальный X-сервер; рендер поднимает его
+#                                 сам (components/step.py, ensure_display);
+#   libgl1-mesa-dri, libglx-mesa0 программный OpenGL Mesa. libgl1 — только
+#                                 диспетчер, рисует Mesa, а она приходит
+#                                 «рекомендуемой» зависимостью и без явного
+#                                 указания отрезается --no-install-recommends:
+#                                 экран есть, а рисовать нечем;
+#   libx*                         то, что VTK подгружает для работы с X.
 ARG WITH_STEP=false
 COPY requirements-step.in .
 RUN if [ "$WITH_STEP" = "true" ]; then \
         apt-get update \
         && apt-get install -y --no-install-recommends \
-            libgl1 libxrender1 libxext6 xvfb \
+            xvfb libgl1 libgl1-mesa-dri libglx-mesa0 \
+            libxrender1 libxext6 libxt6 libxcursor1 \
         && rm -rf /var/lib/apt/lists/* \
         && pip install -r requirements-step.in; \
     fi \
