@@ -1,4 +1,5 @@
 {% extends "components/base.html" %}
+{% load components_extras %}
 
 {% block title %}Библиотека компонентов{% endblock %}
 
@@ -51,7 +52,7 @@
         <div class="coverage__legend">
           <span class="coverage__key coverage__key--linked">{{ coverage.linked }} из библиотеки</span>
           <span class="coverage__key coverage__key--plain">{{ coverage.unlinked }} из файла</span>
-          <span class="muted">всего {{ coverage.rows }} строк в текущих ревизиях</span>
+          <span class="muted">всего {{ coverage.rows|plural:"строка,строки,строк" }} в текущих ревизиях</span>
         </div>
       </div>
     </div>

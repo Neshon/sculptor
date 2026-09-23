@@ -15,7 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from components import lookup
-from components.permissions import board_editor
+from users.roles import board_editor
 from components.refs import resolve
 from components.registry import get_category
 from servers.boards_bridge import sync_board
@@ -30,8 +30,9 @@ from .importer import BomParseError, parse_bom
 from .linking import MATCH_PICK, build_index, component_values, link_items
 from .models import BOARD_TYPES, Board, BoardItem, BoardRevision
 from .pn import canonical
-from .revisions import parse_pn, sort_key
+from .revisions import sort_key
 from .search import items_queryset
+from .storing import store_revision
 
 PAGE_SIZE = 50
 ITEM_PAGE_SIZE = 50
@@ -261,7 +262,8 @@ def _import_one(request, upload, index):
 
     try:
         linked = link_items(items, index)
-        revision = _save_revision(request, header, items)
+        revision = store_revision(header, items,
+                                  request.user.get_username())
     except DatabaseError as exc:
         result["error"] = f"база отклонила запись: {exc}"
         return result
@@ -269,53 +271,6 @@ def _import_one(request, upload, index):
     result.update(ok=True, revision=revision, lines=len(items),
                   unlinked=len(items) - linked)
     return result
-
-
-@transaction.atomic
-def _save_revision(request, header, items):
-    """Сохраняет ревизию платы.
-
-    Плата опознаётся по базовому номеру, ревизия — по полному: HSBP-5S01-02C
-    и HSBP-5S01-02D это две ревизии одной платы, а не две платы. Повторная
-    загрузка того же номера обновляет свою ревизию, а не плодит копии.
-
-    Имя файла сюда больше не передаётся: хранить его перестали — одно и то
-    же «BOM.xlsx» у десятка ревизий ничего не опознавало.
-    """
-    full_pn = header["oy_pn"]
-    base_pn, _, _ = parse_pn(full_pn)
-    username = request.user.get_username()
-
-    board = Board.objects.filter(base_pn=base_pn).first() or Board(base_pn=base_pn)
-    board.apply_pn(full_pn)
-    # шапка BOM у платы не хранится: она своя у каждой ревизии
-    board.imported_by = username
-    board.save()
-
-    revision = board.revisions.filter(oy_pn=full_pn).first()
-    if revision is None:
-        last = board.revisions.order_by("-number").first()
-        revision = BoardRevision(board=board,
-                                 number=(last.number + 1) if last else 1)
-    revision.apply_pn(full_pn)
-    revision.apply_header(header)
-    # отметка ставится при каждой загрузке: спрашивают «когда состав
-    # обновляли», а не «когда ревизия появилась»
-    revision.remember_source(username)
-    revision.save()
-    # чек-листы заводятся сразу: пустой список честнее отсутствующего —
-    # видно, что документы ждут, но их ещё нет
-    # состав ревизии заменяется целиком: файл — источник истины
-    revision.items.all().delete()
-    BoardItem.objects.bulk_create(
-        [BoardItem(revision=revision, **item) for item in items], batch_size=500)
-
-    board.set_current(revision)
-    # у платы должна быть позиция: в составе изделия она участвует как
-    # позиция, а заводить её отдельной командой после каждого импорта —
-    # лишний шаг, о котором забудут
-    sync_board(board)
-    return revision
 
 
 @board_editor
@@ -336,8 +291,7 @@ def revision_create(request, pk):
             revision = form.save(commit=False)
             revision.board = board
             revision.apply_pn(form.cleaned_data["oy_pn"])
-            last = board.revisions.order_by("-number").first()
-            revision.number = (last.number + 1) if last else 1
+            revision.number = board.next_revision_number()
             # BOM у такой ревизии ещё не загружали: отметка о загрузке
             # остаётся пустой, и это правда, а не пропуск
             revision.save()
@@ -593,21 +547,6 @@ def _picked(request, item):
         return None, None
 
 
-def _next_position(revision, kind):
-    """Номер позиции для строки, у которой его не указали.
-
-    У замены он тот же, что у основной строки: замена не занимает своей
-    позиции в спецификации, она стоит под чужой. Поэтому ``S`` получает
-    последний номер, а ``M`` — следующий за ним.
-    """
-    last = (revision.items.exclude(position__isnull=True)
-            .order_by("-position").first())
-    if last is None:
-        return 1
-    return (last.position if kind == BoardItem.SUBSTITUTE
-            else last.position + 1)
-
-
 @board_editor
 def item_edit(request, pk, number, item_pk=None):
     """Заведение и правка строки состава.
@@ -641,7 +580,7 @@ def item_edit(request, pk, number, item_pk=None):
         item.revision = revision
 
         if item.position is None:
-            item.position = _next_position(revision, item.kind)
+            item.position = revision.next_position(item.kind)
 
         if item.pk is None:
             # Связь известна точно — компонент указал человек, искать её по

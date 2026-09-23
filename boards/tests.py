@@ -11,6 +11,7 @@ import datetime
 import pathlib
 import tempfile
 from io import BytesIO
+from unittest import mock
 
 from django.db import models
 from django.test import SimpleTestCase
@@ -20,7 +21,7 @@ from components.export import EXPORT_LABELS, export_stamp
 from .excel import COLUMNS, HEADER_ROWS, build_workbook
 from .importer import (BomParseError, _find_header_row, _map_columns,
                        _read_items, normalize_date, parse_bom)
-from .models import BoardItem, BoardRevision
+from .models import Board, BoardItem, BoardRevision
 from .references import normalize_references, split_references
 from .search import REVISION_SEARCH_FIELDS, revision_match
 from .usage import group_by_board
@@ -28,12 +29,249 @@ from . import checklists, images, md_card
 from .management.commands.import_cards import Command
 from .forms import BoardForm, BoardItemForm, BoardRevisionForm
 from .linking import COPIED_FIELDS, component_values
-from .models import Board, BoardRevision
 from .pn import canonical, match_key
 from .revisions import parse_pn, revision_counter, sort_key
 
 
 
+
+
+class BoardItemAdminTests(SimpleTestCase):
+    """Строка состава в админке правится так же, как на сайте."""
+
+    def model_admin(self):
+        from django.contrib import admin
+        return admin.site._registry[BoardItem]
+
+    def test_same_form_as_site(self):
+        self.assertIs(self.model_admin().form, BoardItemForm)
+
+    def test_only_form_fields_editable(self):
+        from .admin import ITEM_EDITABLE
+        model_admin = self.model_admin()
+        readonly = set(model_admin.get_readonly_fields(None))
+        for name in ("vendor_pn", "gbt_pn", "description",
+                     "component_table", "component_id", "match"):
+            self.assertIn(name, readonly)
+        self.assertFalse(readonly & set(ITEM_EDITABLE))
+
+    def test_every_field_shown(self):
+        # новое поле модели не должно пропасть со страницы строки;
+        # component_match показан подписью — колонкой match
+        from .admin import ITEM_FIELDSETS
+        shown = {name for _, options in ITEM_FIELDSETS
+                 for name in options["fields"]}
+        shown = {"component_match" if name == "match" else name
+                 for name in shown}
+        fields = {f.name for f in BoardItem._meta.fields} - {"id"}
+        self.assertEqual(shown, fields)
+
+    def test_match_shown_as_label(self):
+        item = BoardItem(component_match="gbt")
+        self.assertEqual(self.model_admin().match(item), "по GBT P/N")
+
+    def test_no_adding(self):
+        self.assertFalse(self.model_admin().has_add_permission(None))
+
+
+class BoardNumberLookupTests(SimpleTestCase):
+    """Плата и ревизия по номеру — одним правилом (pn.match_key) везде."""
+
+    def test_query_compares_match_key(self):
+        sql = str(Board.objects.with_number("hsbp-5s.01").query)
+        # без точек и пробелов, в верхнем регистре — с обеих сторон
+        self.assertIn("UPPER(REPLACE(REPLACE(", sql)
+        self.assertIn("HSBP-5S01", sql)
+
+    def test_empty_number_matches_nothing(self):
+        # а не все платы с пустым номером
+        self.assertTrue(Board.objects.with_number("").query.is_empty())
+        self.assertTrue(Board.objects.with_number("  ").query.is_empty())
+
+    def test_unsaved_board(self):
+        board = Board(base_pn="HSBP-5S01")
+        self.assertIsNone(board.revision_by_number("HSBP-5S01-01A"))
+        self.assertEqual(board.next_revision_number(), 1)
+
+
+class StoringTests(SimpleTestCase):
+    """Найти или завести плату и ревизию; сохранить состав из BOM."""
+
+    def test_found_board_not_renamed(self):
+        from .storing import board_for
+        existing = Board(pk=3, base_pn="HSBP-5S01")
+        with mock.patch.object(Board.objects, "by_number",
+                               return_value=existing):
+            self.assertIs(board_for("hsbp-5s.01"), existing)
+        self.assertEqual(existing.base_pn, "HSBP-5S01")
+
+    def test_new_board(self):
+        from .storing import board_for
+        with mock.patch.object(Board.objects, "by_number", return_value=None):
+            board = board_for("HSBP-5S01")
+        self.assertIsNone(board.pk)
+        self.assertEqual(board.base_pn, "HSBP-5S01")
+
+    def test_new_revision_gets_next_number(self):
+        from .storing import revision_for
+        board = Board(pk=3, base_pn="HSBP-5S01")
+        with mock.patch.object(Board, "revision_by_number", return_value=None), \
+                mock.patch.object(Board, "next_revision_number", return_value=7):
+            revision = revision_for(board, "HSBP-5S01-02C")
+        self.assertIsNone(revision.pk)
+        self.assertEqual((revision.number, revision.oy_pn, revision.bom_rev),
+                         (7, "HSBP-5S01-02C", "C"))
+
+    def test_found_revision_returned(self):
+        from .storing import revision_for
+        board = Board(pk=3, base_pn="HSBP-5S01")
+        existing = BoardRevision(pk=9, board=board, number=2,
+                                 oy_pn="HSBP-5S01-02C")
+        with mock.patch.object(Board, "revision_by_number",
+                               return_value=existing), \
+                mock.patch.object(Board, "next_revision_number") as numbering:
+            self.assertIs(revision_for(board, "HSBP-5S.01-02C"), existing)
+        numbering.assert_not_called()
+
+    def test_store_keeps_own_spelling_and_replaces_items(self):
+        from . import storing
+        board = Board(pk=3, base_pn="HSBP-5S01")
+        revision = BoardRevision(pk=9, board=board, number=2,
+                                 oy_pn="HSBP-5S01-02C")
+        items = mock.Mock()
+        with mock.patch.object(storing, "board_for", return_value=board), \
+                mock.patch.object(storing, "revision_for",
+                                  return_value=revision), \
+                mock.patch.object(storing, "sync_board") as sync, \
+                mock.patch.object(Board, "save"), \
+                mock.patch.object(Board, "set_current") as set_current, \
+                mock.patch.object(BoardRevision, "save"), \
+                mock.patch.object(BoardRevision, "items", items), \
+                mock.patch.object(BoardItem.objects, "bulk_create") as create:
+            # транзакция снята: SimpleTestCase к базе не пускает
+            stored = storing.store_revision.__wrapped__(
+                {"oy_pn": "HSBP-5S.01-02C"}, [{"position": 1}], "ivanov")
+
+        self.assertIs(stored, revision)
+        # номер в файле с точкой, но ревизия остаётся записанной по-своему
+        self.assertEqual(revision.oy_pn, "HSBP-5S01-02C")
+        self.assertEqual((board.imported_by, revision.imported_by),
+                         ("ivanov", "ivanov"))
+        items.all.return_value.delete.assert_called_once()
+        self.assertEqual(len(create.call_args.args[0]), 1)
+        set_current.assert_called_once_with(revision)
+        sync.assert_called_once_with(board)
+
+
+class AdminCountsTests(SimpleTestCase):
+    """Счётчики в списках админки считаются в том же запросе, что строки."""
+
+    def test_revision_counts_annotated(self):
+        from django.contrib import admin
+        queryset = admin.site._registry[BoardRevision].get_queryset(None)
+        self.assertLessEqual({"positions_total", "items_total",
+                              "unlinked_total"},
+                             set(queryset.query.annotations))
+
+    def test_revision_columns_read_annotations(self):
+        from django.contrib import admin
+        model_admin = admin.site._registry[BoardRevision]
+        revision = BoardRevision()
+        revision.positions_total, revision.items_total = 3, 7
+        revision.unlinked_total = 1
+        self.assertEqual((model_admin.position_count(revision),
+                          model_admin.item_count(revision),
+                          model_admin.unlinked_count(revision)), (3, 7, 1))
+
+    def test_board_revisions_counted(self):
+        from django.contrib import admin
+        queryset = admin.site._registry[Board].get_queryset(None)
+        self.assertIn("revisions_total", queryset.query.annotations)
+        self.assertTrue(queryset.ordered)
+
+
+class MatchLabelTests(SimpleTestCase):
+    """«Как сопоставлено» — словами, а не кодами правил."""
+
+    def test_labels(self):
+        from .linking import MATCH_PICK, NO_MATCH_LABEL, match_label
+        self.assertEqual(match_label(MATCH_PICK), "выбран в библиотеке")
+        self.assertEqual(match_label(""), NO_MATCH_LABEL)
+        # незнакомый код не прячется за прочерком
+        self.assertEqual(match_label("fuzzy"), "fuzzy")
+
+    def filtered(self, value):
+        from .admin import BoardItemAdmin, MatchFilter
+        params = {MatchFilter.parameter_name: [value]} if value else {}
+        list_filter = MatchFilter(None, params, BoardItem, BoardItemAdmin)
+        queryset = mock.Mock()
+        return list_filter.queryset(None, queryset), queryset
+
+    def test_filter_unlinked_rows(self):
+        from .admin import MatchFilter
+        _, queryset = self.filtered(MatchFilter.NONE)
+        queryset.filter.assert_called_once_with(component_match="")
+
+    def test_filter_by_rule(self):
+        _, queryset = self.filtered("vendor")
+        queryset.filter.assert_called_once_with(component_match="vendor")
+
+    def test_no_filter(self):
+        result, queryset = self.filtered(None)
+        self.assertIs(result, queryset)
+        queryset.filter.assert_not_called()
+
+
+class NextPositionTests(SimpleTestCase):
+    """Номер позиции, если его не указали: M — следующий, S — тот же."""
+
+    def revision(self, last_position):
+        revision = mock.Mock()
+        last = mock.Mock(position=last_position) if last_position else None
+        (revision.items.exclude.return_value
+         .order_by.return_value.first.return_value) = last
+        return revision
+
+    def test_empty_revision_starts_with_one(self):
+        self.assertEqual(
+            BoardRevision.next_position(self.revision(None), BoardItem.MAIN), 1)
+
+    def test_main_takes_next(self):
+        self.assertEqual(
+            BoardRevision.next_position(self.revision(7), BoardItem.MAIN), 8)
+
+    def test_substitute_stays_under_last(self):
+        self.assertEqual(
+            BoardRevision.next_position(self.revision(7), BoardItem.SUBSTITUTE),
+            7)
+
+
+class ItemDeleteButtonTests(SimpleTestCase):
+    """«Удалить» в форме позиции отправляет POST, а не ведёт по ссылке.
+
+    Удаление строки BOM принимает только POST, а на GET возвращает к
+    составу. Кнопка была ссылкой — и удаление молча ничего не делало.
+    """
+
+    def source(self):
+        from django.template.loader import get_template
+
+        return get_template("boards/item_form.html").template.source
+
+    def test_delete_is_a_submit_button(self):
+        source = self.source()
+        start = source.index("boards:item-delete")
+        tag = source[source.rindex("<", 0, start):source.index(">", start)]
+        self.assertTrue(tag.startswith("<button"), tag)
+        self.assertIn('type="submit"', tag)
+        self.assertIn("formaction=", tag)
+
+    def test_save_stays_the_default_button(self):
+        # Enter в поле нажимает первую кнопку формы — это должно быть
+        # сохранение, а не удаление
+        source = self.source()
+        self.assertLess(source.index("Сохранить позицию"),
+                        source.index("boards:item-delete"))
 
 
 class ChecklistTests(SimpleTestCase):

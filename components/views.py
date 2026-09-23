@@ -1,52 +1,48 @@
 """Веб-интерфейс библиотеки: список, карточка, создание, правка, удаление.
 
-Помощники списка вынесены в :mod:`components.listing`, импорт внешних
-ссылок — в :mod:`components.link_views`.
+Остальное — по своим модулям: помощники списка в :mod:`components.listing`,
+импорт внешних ссылок в :mod:`components.link_views`, картинка посадочного
+места в :mod:`components.image_views`, глобальный поиск в
+:mod:`components.search_views`, журнал изменений в
+:mod:`components.change_views`.
 """
-
-from functools import partial
-from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db import DatabaseError, transaction
-from django.http import Http404
-from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.db import DatabaseError
+from django.shortcuts import redirect, render
 from django.utils.decorators import method_decorator
 from django.utils.text import slugify
 from django.views import View
 
-from boards.search import search_boards, search_items
 from boards.stats import bom_coverage
 from boards.usage import find_usages, usage_summary
+from users.roles import admin_only, component_editor
 
 from .cache import COUNTS_KEY, cached
 from .db import fallback, unavailable
-from .defaults import defaults
 from .duplicates import CHECKS, DEFAULT_CHECK, find_duplicates
+from .editing import ComponentDraft
 from .export import csv_response, export_stamp
-from .forms import (FilterForm, StepImageForm, build_form_class,
-                    group_fields, sample_initial)
-from .history import (history, log_authors, log_queryset, record,
-                      record_deletion, record_duplicate, snapshot,
-                      with_authors)
-from .listing import (PAGE_SIZES, category_or_404, fetch,
-                      filter_choices, page_size, sorted_queryset)
-from .lookup import footprint_usage, matches
+from .filter_forms import FilterForm
+from .forms import group_fields
+from .history import history, record_deletion
+from .image_views import footprint_of
+from .listing import (
+    PAGE_SIZES,
+    category_or_404,
+    fetch,
+    filter_choices,
+    page_size,
+    sorted_queryset,
+)
 from .matching import usable
-from .models import ComponentChange, FootprintImage, StepRenderJob
-from .numbering import next_oy_id
-from .permissions import admin_only, component_editor
+from .models import FootprintImage, StepRenderJob
 from .querystring import with_params
-from .refs import resolve
-from .step import normalize_footprint, save_to_queue
-from .tasks import dispatch_render
-from .registry import (CATEGORIES, MAIN_CATEGORIES, REPLACEMENT_CATEGORIES,
-                       counterpart)
+from .registry import MAIN_CATEGORIES, REPLACEMENT_CATEGORIES, counterpart
+from .step import normalize_footprint
 
 RELATED_LIMIT = 50
-SEARCH_PREVIEW = 10
 DUPLICATE_PAGE_SIZE = 50
 
 
@@ -130,7 +126,12 @@ def component_list(request, slug):
              "cells": [(name, getattr(obj, name)) for name, _ in columns]}
             for obj in page.object_list]
 
-    return render(request, "components/list.html", {
+    # HTMX просит только панель — фильтры и таблицу (list.html#panel):
+    # фильтры сужают друг друга, и обновлять одну таблицу нельзя. Обычный
+    # запрос получает страницу целиком
+    template = ("components/list.html#panel" if getattr(request, "htmx", False)
+                else "components/list.html")
+    return render(request, template, {
         "category": category,
         "columns": columns,
         "rows": rows,
@@ -232,11 +233,6 @@ def _split_fields(filled):
     return description, left, right, rest
 
 
-def _footprint_of(obj):
-    """Allegro PCB Footprint записи. У таблиц замен колонки нет вовсе."""
-    return getattr(obj, "allegro_pcb_footprint", "") or ""
-
-
 def _borrowed_image(related):
     """Картинка соседа по OY ID — для записей без своего посадочного места.
 
@@ -258,10 +254,10 @@ def _borrowed_image(related):
 
     targets = sorted(related, key=lambda item: item["category"].replacement)
     found = FootprintImage.for_footprints(
-        _footprint_of(item["obj"]) for item in targets)
+        footprint_of(item["obj"]) for item in targets)
 
     for item in targets:
-        image = found.get(normalize_footprint(_footprint_of(item["obj"])))
+        image = found.get(normalize_footprint(footprint_of(item["obj"])))
         if image:
             return image, item
     return None, None
@@ -273,7 +269,8 @@ def component_detail(request, slug, pk):
     # суррогатный id — служебный, пользователю он ничего не говорит
     fields = [(f.verbose_name, getattr(obj, f.name), f.name)
               for f in category.ordered_fields
-              if not (f.primary_key and f.get_internal_type() == "AutoField")]
+              if not (f.primary_key and f.get_internal_type() == "AutoField")
+              and f.name not in category.hidden_fields]
     filled = [f for f in fields if f[1] not in (None, "")]
     description, left_fields, right_fields, other_fields = \
         _split_fields(filled)
@@ -287,7 +284,7 @@ def component_detail(request, slug, pk):
     # Картинка ищется по посадочному месту в момент показа, а не хранится
     # у записи: так её сразу видят и новые компоненты с известным
     # footprint, и те, что завели в базу другие программы
-    image = FootprintImage.for_footprint(_footprint_of(obj))
+    image = FootprintImage.for_footprint(footprint_of(obj))
     # своего места нет — показываем соседскую, но не молча: карточка
     # скажет, чья она, и даст на неё ссылку
     borrowed_from = None
@@ -310,10 +307,12 @@ def component_detail(request, slug, pk):
         "related_limit": RELATED_LIMIT,
         "image": image,
         "borrowed_from": borrowed_from,
-        "has_footprint_field": hasattr(category.model,
-                                       "allegro_pcb_footprint"),
+        # без посадочного места картинке не к чему привязаться
+        "has_footprint_field": (
+            hasattr(category.model, "allegro_pcb_footprint")
+            and "allegro_pcb_footprint" not in category.hidden_fields),
         # картинка может как раз готовиться — карточка скажет об этом
-        "job": StepRenderJob.latest_for(_footprint_of(obj)),
+        "job": StepRenderJob.latest_for(footprint_of(obj)),
     })
 
 
@@ -321,44 +320,36 @@ def component_detail(request, slug, pk):
 
 @method_decorator(component_editor, name="dispatch")
 class ComponentEditView(View):
-    """Создание и правка — одна форма на оба случая."""
+    """Создание и правка — одна форма на все случаи.
+
+    Здесь только то, что про запрос: права, откуда взять образец и
+    основной компонент, перенаправления и сообщения. Что в форме заперто,
+    откуда значения и как сохранять — в :class:`components.editing.ComponentDraft`.
+    """
 
     template_name = "components/form.html"
 
     def dispatch(self, request, slug, pk=None, *args, **kwargs):
-        self.category = category_or_404(slug)
-        read_only = _read_only_redirect(request, self.category)
+        category = category_or_404(slug)
+        read_only = _read_only_redirect(request, category)
         if read_only is not None:
             return read_only
 
-        self.source = None
-        if self.category.replacement and pk is None:
-            redirect_response = self._require_source(request, slug)
-            if redirect_response is not None:
-                return redirect_response
+        source = None
+        if category.replacement and pk is None:
+            source, refused = self._require_source(request, category, slug)
+            if refused is not None:
+                return refused
 
-        self.object = (self.category.model() if pk is None
-                       else fetch(self.category, pk))
-        self.created = self.object.pk is None
+        obj = category.model() if pk is None else fetch(category, pk)
         # компонент, с которого списываем параметры («Добавить по образцу»)
-        self.sample = self._find_sample(request) if self.created else None
-
-        # Снимок «до» берётся здесь, а не в post(), и это принципиально.
-        # ModelForm переносит присланные данные на instance ещё во время
-        # is_valid() — в _post_clean(). Дальше self.object уже держит новые
-        # значения, сравнивать его с самим собой бессмысленно, и история
-        # правок оставалась пустой. Здесь запись только что прочитана из
-        # базы и формы ещё не касалась.
-        self.before = {} if self.created else snapshot(self.object)
-
-        self.locked = self._locked_fields()
-        # OY ID в форму не выводится: править его нельзя, а место в первом
-        # ряду занимает то, что действительно вводят. Значение показывается
-        # в шапке и проставляется при сохранении.
-        self.oy_id, self.oy_id_hint = self._lock_oy_id()
+        sample = (self._find_sample(request, category) if obj.pk is None
+                  else None)
+        self.draft = ComponentDraft(category, obj, source=source, sample=sample)
         return super().dispatch(request, *args, **kwargs)
 
-    def _find_sample(self, request):
+    @staticmethod
+    def _find_sample(request, category):
         """Компонент из ?like= — образец для нового.
 
         Берётся только из этой же группы: у соседней таблицы другой набор
@@ -369,17 +360,18 @@ class ComponentEditView(View):
         if not pk:
             return None
         try:
-            return self.category.model.objects.filter(pk=pk).first()
+            return category.model.objects.filter(pk=pk).first()
         except (DatabaseError, ValueError, TypeError):
             return None
 
-    def _require_source(self, request, slug):
+    @staticmethod
+    def _require_source(request, category, slug):
         """Замену заводят только из карточки основного компонента.
 
         OY ID берётся оттуда: без него аналог не с чем связать. Возвращает
-        перенаправление, если основного компонента нет, иначе None.
+        ``(основной компонент, None)`` или ``(None, перенаправление)``.
         """
-        origin = counterpart(self.category)
+        origin = counterpart(category)
         source_pk = request.POST.get("from") or request.GET.get("from")
         source = None
         if origin and source_pk:
@@ -393,191 +385,53 @@ class ComponentEditView(View):
                 request,
                 "Замену можно добавить только из карточки основного "
                 "компонента — в блоке «аналоги по OY ID».")
-            return redirect("components:list",
-                            slug=origin.slug if origin else slug)
+            return None, redirect("components:list",
+                                  slug=origin.slug if origin else slug)
 
         if not usable(source.oy_id):
             messages.warning(
                 request,
                 f"У компонента {source.display_title()} не заполнен OY ID — "
                 f"сначала укажите его, иначе замену не с чем связать.")
-            return redirect(source.get_absolute_url())
+            return None, redirect(source.get_absolute_url())
 
-        self.source = source
-        return None
-
-    def _locked_fields(self):
-        """``{поле: (значение, пояснение)}`` — что показываем, но не даём править.
-
-        Пустой словарь для поля означает «оставить редактируемым»: подобрать
-        значение не удалось, и заперев поле, мы бы не дали завести первую
-        запись в пустой таблице.
-        """
-        locked = {}
-
-        group = self._lock_group()
-        if group:
-            # без пояснения: поле и так заперто и заполнено, а подпись
-            # «определяется группой компонентов» повторяла название группы,
-            # написанное строкой выше
-            locked["group"] = (group, "")
-
-        return locked
-
-    def _lock_oy_id(self):
-        """Значение OY ID и пояснение, откуда оно взялось.
-
-        У замены оно приходит от основного компонента, у существующей записи
-        остаётся прежним, у нового компонента вычисляется по нумерации.
-        Если вычислить нечего (в таблице ещё нет ни одного ID) или в записи
-        стоит заглушка — поле остаётся редактируемым, иначе завести первый
-        компонент было бы нечем.
-        """
-        if self.source:
-            return self.source.oy_id, (f"Берётся у основного компонента "
-                                       f"{self.source.display_title()}")
-        if self.object.pk:
-            return (usable(getattr(self.object, "oy_id", "")) or None,
-                    "Идентификатор записи не меняется")
-        return (next_oy_id(self.category) or None,
-                "Следующий свободный номер, назначается автоматически")
-
-    def _lock_group(self):
-        """Значение Group: оно определяется таблицей, а не автором записи.
-
-        У существующей записи остаётся своё: подменять его на общее по
-        группе значило бы молча править данные, за которыми сюда не
-        приходили. Незаполненное — случай другой: там заполнять нечего, и
-        подставляется общее.
-        """
-        if "group" not in self.category.field_names:
-            return None
-        if self.object.pk:
-            current = usable(getattr(self.object, "group", ""))
-            if current:
-                return current
-        return defaults(self.category).get("group")
-
-    def _lock_widgets(self, form):
-        """Запирает поля; пояснение под полем — если оно там нужно.
-
-        ``disabled`` вместо ``readonly``: readonly в браузере обходится, а
-        disabled Django обрабатывает сам — присланные данные для такого поля
-        игнорируются, и берётся значение из ``initial``. Поэтому подменить
-        его запросом нельзя, и доопределять поле при сохранении не нужно.
-        """
-        for name, (value, hint) in self.locked.items():
-            field = form.fields.get(name)
-            if field is None:
-                continue
-            field.disabled = True
-            # пустое пояснение убирает подпись под полем, в том числе ту,
-            # что могла остаться от справочника значений
-            field.help_text = hint
-            # Класс условный, а не по типу виджета: конвертеры crispy такое
-            # не выражают. «field» дописывать не нужно — crispy увидит его в
-            # строке и второй раз не добавит.
-            field.widget.attrs["class"] = "field field--locked"
-
-    def _initial(self):
-        """Начальные значения формы — одинаковые для показа и для отправки.
-
-        Для запертых полей это не удобство, а источник истины: значение
-        ``disabled``-поля Django берёт именно отсюда.
-        """
-        # у всей группы одинаковые значения (Group) подставляются сразу
-        initial = defaults(self.category) if self.created else {}
-
-        # Замена — тот же компонент другого производителя: подгруппа,
-        # корпус, номинал, температурный диапазон у неё те же. Поэтому
-        # параметры списываются с основного компонента, как при заведении
-        # по образцу, — заполнять их заново было бы переписыванием
-        # соседней карточки вручную.
-        #
-        # Опознающие поля и Datasheet не переносятся (см. NOT_COPIED):
-        # аналог на то и аналог, что артикул, производитель и документация
-        # у него свои. Лишние ключи не мешают: в таблице замен нет полей
-        # Allegro, и в форму они просто не попадут.
-        for donor in (self.source, self.sample):
-            if donor is not None:
-                initial.update(sample_initial(donor))
-
-        for name, (value, _) in self.locked.items():
-            initial[name] = value
-        return initial
-
-    def build_form(self, data=None):
-        """Собирает форму и сразу запирает поля.
-
-        Запереть их нужно до проверки, а не перед показом. ``disabled``
-        Django учитывает в ``is_valid()``: только там он подставляет
-        значение из ``initial`` вместо присланного. Пока поле заперто лишь
-        при отрисовке, браузер его не отправляет (disabled-поля не
-        отправляются), проверка видит пустоту и записывает «---» — так
-        Group и сбрасывалась при каждой правке.
-        """
-        form = self.get_form_class()(data, instance=self.object,
-                                     initial=self._initial())
-        self._lock_widgets(form)
-        return form
+        return source, None
 
     def render_form(self, request, form):
+        draft = self.draft
         return render(request, self.template_name, {
-            "category": self.category,
+            "category": draft.category,
             "form": form,
             "sections": group_fields(form),
-            "object": self.object if self.object.pk else None,
-            "source": self.source,
-            "sample": self.sample,
-            "oy_id": self.oy_id,
-            "oy_id_hint": self.oy_id_hint,
+            "object": None if draft.created else draft.obj,
+            "source": draft.source,
+            "sample": draft.sample,
+            "oy_id": draft.oy_id,
+            "oy_id_hint": draft.oy_id_hint,
         })
 
-    def get_form_class(self):
-        return build_form_class(self.category.model, self.category.table)
-
     def get(self, request):
-        return self.render_form(request, self.build_form())
+        return self.render_form(request, self.draft.build_form())
 
     def post(self, request):
-        form = self.build_form(request.POST)
+        draft = self.draft
+        form = draft.build_form(request.POST)
         if not form.is_valid():
             messages.error(request, _invalid_form_message(form))
             return self.render_form(request, form)
 
-        created = self.created
         try:
-            obj = form.save(commit=False)
-            # OY ID формой не передаётся — его в ней нет. У новой записи он
-            # назначается по нумерации, у существующей остаётся прежним.
-            if self.oy_id:
-                obj.oy_id = self.oy_id
-            # остальные запертые поля доопределять не нужно: disabled-поля
-            # Django заполняет из initial и присланные данные игнорирует.
-            # Автор проставляется сам при создании и дальше не меняется:
-            # это тот, кто завёл запись, а не последний правивший
-            if created and not getattr(obj, "author", None):
-                obj.author = request.user.get_username()
-            obj.save()
+            obj = draft.save(form, request.user)
         except DatabaseError as exc:
             messages.error(request, f"База отклонила запись: {exc}")
             return self.render_form(request, form)
 
-        # сравнивается то, что в самом деле легло в базу, а не список
-        # полей, которые форма считает изменёнными: при сохранении пустые
-        # значения превращаются в «---», и форма об этом не знает
-        record(obj, self.category.table, request.user, self.before)
-        # подтверждённое совпадение — отдельное событие: запись завели,
-        # зная, что похожая уже есть
-        record_duplicate(obj, self.category.table, request.user,
-                         form.confirmed_duplicates)
-
-
         messages.success(
             request,
             f"Компонент {obj.display_title()} "
-            + ("добавлен." if created else "сохранён."))
-        return redirect("components:detail", slug=self.category.slug, pk=obj.pk)
+            + ("добавлен." if draft.created else "сохранён."))
+        return redirect("components:detail", slug=draft.category.slug,
+                        pk=obj.pk)
 
 
 def _invalid_form_message(form):
@@ -591,111 +445,6 @@ def _invalid_form_message(form):
     if not labels:
         return "Не сохранено — проверьте форму."
     return "Не сохранено — проверьте поля: " + ", ".join(labels)
-
-
-# ---- картинка посадочного места -----------------------------------------
-
-
-@component_editor
-def footprint_image(request, slug, pk):
-    """Добавление и замена картинки посадочного места компонента.
-
-    Отдельная страница, а не блок в форме компонента, по двум причинам.
-    Картинка принадлежит не компоненту, а его посадочному месту: загрузка
-    меняет её у всех компонентов с этим footprint, и смешивать это с
-    правкой одной записи значило бы прятать действие над многими внутри
-    действия над одной. И STEP-файл весит мегабайты: гонять его вместе с
-    сотней полей компонента на каждое сохранение незачем.
-
-    Заходят сюда из карточки компонента; назад — туда же.
-    """
-    category = category_or_404(slug)
-    if not hasattr(category.model, "allegro_pcb_footprint"):
-        # у таблиц замен колонки нет, и картинку им записать некуда: они
-        # берут её у основного компонента по OY ID
-        raise Http404("У этой группы нет посадочного места")
-    if category.read_only:
-        raise Http404("Группа только для чтения")
-
-    obj = fetch(category, pk)
-    footprint = usable(_footprint_of(obj))
-    image = FootprintImage.for_footprint(footprint)
-    form = StepImageForm(request.POST or None, request.FILES or None)
-    back = redirect("components:detail", slug=category.slug, pk=obj.pk)
-
-    if request.method == "POST" and form.is_valid():
-        if not footprint:
-            messages.warning(
-                request,
-                "У компонента не указан Allegro PCB Footprint, а картинка "
-                "хранится у посадочного места. Сначала заполните его.")
-            return back
-
-        if form.cleaned_data.get("drop_image"):
-            if image:
-                image.delete()
-                messages.info(
-                    request,
-                    f"Картинка посадочного места {footprint} удалена — "
-                    f"у всех компонентов с ним.")
-            return back
-
-        uploaded = form.cleaned_data["step_file"]
-        try:
-            queued_as = save_to_queue(uploaded)
-        except OSError as exc:
-            # чаще всего — права на каталог очереди: в Docker он том, и
-            # писать в него должен пользователь, от которого работает сайт
-            messages.error(
-                request,
-                f"Не удалось положить модель в очередь на рендер: {exc}")
-            return render(request, "components/footprint_image.html", {
-                "category": category, "object": obj, "form": form,
-                "image": image, "footprint": footprint,
-                "job": StepRenderJob.latest_for(footprint),
-                "footprint_usage": footprint_usage(footprint),
-            })
-
-        job = StepRenderJob.objects.create(
-            key=normalize_footprint(footprint), footprint=footprint,
-            source_name=getattr(uploaded, "name", "")[:255],
-            step_file=queued_as, author=request.user.get_username())
-
-        # Отправляем после фиксации транзакции: рендер идёт в другом
-        # процессе со своим соединением, и заявку, которой в базе ещё не
-        # видно, он бы просто не нашёл
-        transaction.on_commit(partial(dispatch_render, job.pk))
-
-        # Сообщение — по факту: если запустить рендер не вышло, заявка уже
-        # закрыта с причиной, и «готовится» было бы неправдой
-        job.refresh_from_db()
-        if job.status == StepRenderJob.DONE:
-            messages.success(
-                request,
-                f"Картинка посадочного места {footprint} готова: "
-                f"{job.message}.")
-            return back
-        if job.status == StepRenderJob.FAILED:
-            # остаёмся на странице — можно сразу выбрать другой файл
-            messages.error(request, f"Изображение не сделано: {job.message}")
-        else:
-            messages.info(
-                request,
-                f"Модель принята, картинка посадочного места {footprint} "
-                f"готовится. Карточка покажет её, когда рендер закончится.")
-            return back
-
-    return render(request, "components/footprint_image.html", {
-        "category": category,
-        "object": obj,
-        "form": form,
-        "image": image,
-        "footprint": footprint,
-        "job": StepRenderJob.latest_for(footprint),
-        # сколько компонентов увидят новую картинку: загрузка заменяет её
-        # всем, и об этом надо сказать до того, как нажмут
-        "footprint_usage": footprint_usage(footprint),
-    })
 
 
 # ---- удаление ------------------------------------------------------------
@@ -754,127 +503,6 @@ def _analog_count(category, obj):
     if not pair or not oy_id:
         return 0
     return pair.model.objects.filter(oy_id=oy_id).count()
-
-
-# ---- поиск ---------------------------------------------------------------
-
-def _search_components(term):
-    """Совпадения по всем таблицам компонентов: рабочим и заменам.
-
-    Сам обход — в :mod:`components.lookup`, он общий с выбором компонента в
-    состав платы. Здесь остаётся только показ: превью по группам и точное
-    число совпадений.
-
-    Точное число нужно лишь тогда, когда совпадений больше, чем помещается
-    в превью: таблиц двадцать семь, и ``COUNT`` по каждой из них — это
-    двадцать семь лишних запросов там, где ответ и так виден по длине
-    превью.
-    """
-    results, total = [], 0
-    for category, queryset, objects, has_more in matches(term, SEARCH_PREVIEW):
-        count = queryset.count() if has_more else len(objects)
-        total += count
-        results.append({
-            "category": category,
-            "objects": objects,
-            "count": count,
-            "url": (reverse("components:list", args=[category.slug])
-                    + "?" + urlencode({"q": term})),
-        })
-    # сначала рабочие группы, внутри каждой части — по числу совпадений
-    results.sort(key=lambda r: (r["category"].replacement, -r["count"]))
-    return results, total
-
-
-def global_search(request):
-    """Поиск по всем группам, а также по платам и их составам."""
-    term = (request.GET.get("q") or "").strip()
-    results, total = [], 0
-    boards, boards_count = [], 0
-    board_items, board_items_count = [], 0
-
-    if term:
-        boards, boards_count = search_boards(term)
-        board_items, board_items_count = search_items(term)
-        results, total = _search_components(term)
-        total += boards_count + board_items_count
-
-    return render(request, "components/search.html", {
-        "term": term,
-        "results": results,
-        "total": total,
-        "boards": boards,
-        "boards_count": boards_count,
-        "board_items": board_items,
-        "board_items_count": board_items_count,
-    })
-
-
-# ---- история изменений ---------------------------------------------------
-
-LOG_PAGE_SIZE = 50
-
-
-def change_log(request):
-    """Журнал изменений по всей библиотеке.
-
-    В карточке видна история одного компонента, и этого не хватает в двух
-    случаях. Первый — вопрос «кто и когда правил это на прошлой неделе»,
-    когда неизвестно, какой именно компонент смотреть. Второй — удаления:
-    карточки у удалённой записи нет, и до сих пор такие записи можно было
-    увидеть только в админке.
-    """
-    filters = request.GET
-    per_page = page_size(request)
-    try:
-        paginator = Paginator(log_queryset(filters), per_page)
-        page = paginator.get_page(filters.get("page"))
-        rows = with_authors(list(page.object_list))
-        total = paginator.count
-    except DatabaseError:
-        page, paginator, rows, total = None, None, [], 0
-
-    return render(request, "components/changes.html", {
-        "page": page,
-        "paginator": paginator,
-        "rows": rows,
-        "total": total,
-        "per_page": per_page,
-        "page_sizes": PAGE_SIZES,
-        "actions": ComponentChange.ACTIONS,
-        "tables": [c.table for c in CATEGORIES.values()],
-        "authors": log_authors(),
-        "selected": {
-            "action": filters.get("action", ""),
-            "table": filters.get("table", ""),
-            "author": filters.get("author", ""),
-            "since": filters.get("since", ""),
-            "until": filters.get("until", ""),
-        },
-    })
-
-
-def component_change(request, pk):
-    """Подробности одной правки: кто, когда и что именно поменял.
-
-    Открывается из карточки в отдельной вкладке, поэтому здесь есть ссылка
-    обратно на компонент — вернуться «назад» в новой вкладке некуда.
-
-    Компонент к этому моменту могли удалить или переименовать: история
-    хранится отдельно и переживает запись. Тогда показываем то, что знаем,
-    и говорим, что компонента больше нет.
-    """
-    change = get_object_or_404(ComponentChange, pk=pk)
-    with_authors([change])
-    # «таблицы такой нет» и «запись уже удалили» — разные сообщения на
-    # странице, поэтому разрешение отдаёт обе половины отдельно
-    category, obj = resolve(change.component_table, change.component_id)
-
-    return render(request, "components/change.html", {
-        "change": change,
-        "category": category,
-        "object": obj,
-    })
 
 
 # ---- ревизия данных ------------------------------------------------------

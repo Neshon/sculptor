@@ -24,7 +24,7 @@
 
 from django.urls import reverse
 
-from .db import fallback
+from .db import fallback, unavailable
 
 # Реестр импортируется внутри функций, а не здесь. Причина — кольцо:
 # models.py подмешивает ComponentRefMixin, то есть грузит этот модуль; а
@@ -64,6 +64,41 @@ def component_object(table, pk):
     if category is None or pk is None:
         return None
     return category.model.objects.filter(pk=pk).first()
+
+
+def component_titles(pairs):
+    """``{(таблица, ключ): название}`` для пачки ссылок.
+
+    Один запрос на таблицу, а не на строку: страница журнала — полсотни
+    записей вперемешку из разных таблиц.
+
+    Три исхода, и различать их важно:
+
+    * название — запись есть;
+    * ``None`` — таблицу прочитали, а записи в ней нет: компонент удалён;
+    * пары нет в ответе — проверить не удалось (таблица неизвестна или не
+      читается). Сказать про такую «удалён» было бы неправдой.
+    """
+    from .registry import category_by_table
+
+    by_table = {}
+    for table, pk in pairs:
+        if table and pk is not None:
+            by_table.setdefault(table, set()).add(pk)
+
+    titles = {}
+    for table, keys in by_table.items():
+        category = category_by_table(table)
+        if category is None:
+            continue
+        model = category.model
+        with unavailable(table):
+            # остальные колонки для названия не нужны, а их под сотню
+            found = {obj.pk: obj.display_title()
+                     for obj in (model.objects.filter(pk__in=keys)
+                                 .order_by().only(*model.TITLE_FIELDS))}
+            titles.update({(table, pk): found.get(pk) for pk in keys})
+    return titles
 
 
 def resolve(table, pk):

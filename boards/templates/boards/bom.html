@@ -16,7 +16,7 @@
     <span class="chip chip--table">Rev {{ revision.board_rev|default:"—" }}</span>
     <span class="chip chip--table">BOM {{ revision.bom_rev|default:"—" }}</span>
     {% if revision.variant %}<span class="chip chip--dup">исполнение {{ revision.variant }}</span>{% endif %}
-    <span class="legend__count">{{ position_count }} позиций · {{ item_count }} строк</span>
+    <span class="legend__count">{{ position_count|plural:"позиция,позиции,позиций" }} · {{ item_count|plural:"строка,строки,строк" }}</span>
     <span class="legend__actions">
       <a class="btn" href="?export=xlsx"
          title="BOM в том же виде, в каком он приходит: файл читается обратно импортом">Выгрузить Excel</a>

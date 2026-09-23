@@ -20,7 +20,8 @@
 <div class="panel">
   <form class="toolbar" method="get">
     <input class="field field--search" type="search" name="q" value="{{ term }}"
-           placeholder="OY P/N, номер платы, GCT P/N, децимальный номер, автор"
+           placeholder="Поиск по списку"
+           title="OY P/N, номер платы, GCT P/N, децимальный номер, автор"
            autocomplete="off">
     <select class="field field--select" name="type" data-autosubmit="1"
             data-title="Тип платы">
@@ -30,7 +31,7 @@
       {% endfor %}
     </select>
     <button class="btn btn--primary" type="submit">Найти</button>
-    {% if term or board_type %}<a class="btn btn--ghost" href="{% url 'boards:list' %}">Сбросить</a>{% endif %}
+    {% if term or board_type %}<a class="btn btn--reset" href="{% url 'boards:list' %}">Сбросить</a>{% endif %}
   </form>
 
   {% if page.object_list %}

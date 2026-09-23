@@ -57,8 +57,18 @@ class ItemQuerySet(models.QuerySet):
             | models.Q(decimal_number__icontains=term))
 
     def with_counts(self):
-        """Число строк состава — для списка, одним запросом."""
-        return self.annotate(line_count=models.Count("lines", distinct=True))
+        """Число строк состава — для списка, одним запросом.
+
+        Считающий annotate добавляет GROUP BY, и Django перестаёт считать
+        набор упорядоченным: Meta.ordering в группировку не переносится.
+        Список листается страницами, и без ORDER BY база вольна отдать одну
+        позицию на двух страницах, а другую не показать ни на одной —
+        Paginator об этом и предупреждал. Сортировку задаём явно, как в
+        boards.models.BoardQuerySet.with_counts.
+        """
+        counted = self.annotate(line_count=models.Count("lines", distinct=True))
+        return counted if counted.ordered else counted.order_by(
+            *self.model._meta.ordering)
 
 
 class Item(models.Model):

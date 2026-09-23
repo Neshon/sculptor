@@ -18,21 +18,29 @@
 
 from django.db import connection
 
+from components.db import distinct_values
+
 MAX_DEPTH = 12
 
 # Разворот состава вниз. Количество перемножается по пути: две платы, в
 # каждой по три конденсатора, дают шесть. Путь нужен и для показа отступом,
-# и для защиты от повторного входа в ту же позицию
+# и для защиты от повторного входа в ту же позицию.
+#
+# Тип количества приведён явно в обеих частях. В представлении это
+# numeric(12, 3), а произведение — numeric без масштаба, и PostgreSQL
+# отказывается от рекурсии с разными типами колонки: страницы «Дерево» и
+# «Сводка» падали с ошибкой 500 на любой позиции. round — чтобы 2 × 3
+# выходило «6.000», как в строке состава, а не «6.000000».
 EXPLODE = """
 WITH RECURSIVE tree AS (
     SELECT e.parent_id, e.child_id, e.oy_pn, e.gct_pn, e.description,
-           e.quantity AS total, e.unit, e.designator, e.comment,
+           e.quantity::numeric AS total, e.unit, e.designator, e.comment,
            1 AS depth, ARRAY[e.parent_id] AS path
     FROM bom_edge e
     WHERE e.parent_id = %s
   UNION ALL
     SELECT e.parent_id, e.child_id, e.oy_pn, e.gct_pn, e.description,
-           t.total * e.quantity, e.unit, e.designator, e.comment,
+           round(t.total * e.quantity, 3), e.unit, e.designator, e.comment,
            t.depth + 1, t.path || e.parent_id
     FROM bom_edge e
     JOIN tree t ON e.parent_id = t.child_id
@@ -126,10 +134,16 @@ def summary(item_id, depth=MAX_DEPTH):
     ревизии платы, и складывать её надо вместе. Единицы измерения в ключ
     входят тоже: 90 мм ленты и 3 штуки этикеток не суммируются.
     """
+    rows = explode(item_id, depth)
+    # У кого есть свой состав — одним запросом на всю сводку. Раньше это
+    # спрашивалось по строке (child.lines.exists()), и у сервера в тысячу
+    # строк сводка стоила тысячу запросов.
+    nodes = _with_lines({row["child"].pk for row in rows if row["child"]})
+
     totals = {}
-    for row in explode(item_id, depth):
+    for row in rows:
         child = row["child"]
-        if child is not None and (child.lines.exists() or child.is_board):
+        if child is not None and (child.pk in nodes or child.is_board):
             continue
         key = (row["oy_pn"] or row["gct_pn"] or row["description"], row["unit"])
         entry = totals.setdefault(key, {
@@ -138,3 +152,13 @@ def summary(item_id, depth=MAX_DEPTH):
             "quantity": 0, "child": child})
         entry["quantity"] += row["quantity"]
     return sorted(totals.values(), key=lambda entry: entry["oy_pn"] or "")
+
+
+def _with_lines(item_ids):
+    """Какие из позиций имеют свои строки состава."""
+    from .models import BomLine
+
+    if not item_ids:
+        return set()
+    return set(distinct_values(BomLine.objects.filter(parent_id__in=item_ids),
+                               "parent_id"))

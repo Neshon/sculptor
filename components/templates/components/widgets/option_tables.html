@@ -1,0 +1,48 @@
+{% comment %}
+  Выбор таблиц в конструкторе выпадающих списков (админка), сеткой: строка —
+  группа, колонки — рабочая таблица и её замены. Устройство и причины — в
+  components.admin.TablesGridWidget.
+
+  Кнопки сверху и щелчок по названию группы работают через
+  option-tables.js. Без скрипта кнопки остаются скрытыми (атрибут hidden),
+  а галочки отправляются формой как обычно.
+{% endcomment %}
+<div class="oy-tables" data-oy-tables>
+  <div class="oy-tables__tools" hidden>
+    <button type="button" class="oy-tables__tool" data-pick="main">Все рабочие</button>
+    <button type="button" class="oy-tables__tool" data-pick="replacement">Все замены</button>
+    <button type="button" class="oy-tables__tool" data-pick="none">Снять все</button>
+  </div>
+  <table class="oy-tables__grid">
+    <thead>
+      <tr><th>Группа</th><th>Рабочая таблица</th><th>Замены</th></tr>
+    </thead>
+    <tbody>
+      {% for row in widget.rows %}
+        <tr>
+          <th scope="row">
+            <span class="oy-tables__group" data-pair title="Отметить или снять обе">{{ row.title }}</span>
+          </th>
+          <td>
+            <label>
+              <input type="checkbox" name="{{ widget.name }}" value="{{ row.main }}"
+                     data-kind="main"{% if row.main in widget.chosen %} checked{% endif %}>
+              <code>{{ row.main }}</code>
+            </label>
+          </td>
+          <td>
+            {% if row.replacement %}
+              <label>
+                <input type="checkbox" name="{{ widget.name }}" value="{{ row.replacement }}"
+                       data-kind="replacement"{% if row.replacement in widget.chosen %} checked{% endif %}>
+                <code>{{ row.replacement }}</code>
+              </label>
+            {% else %}
+              <span class="quiet">нет</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

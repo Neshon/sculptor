@@ -30,6 +30,10 @@
   }
 
   function build(box) {
+    // вкладки собираются один раз: кусок страницы, пришедший через HTMX,
+    // обрабатывается заново, и уже собранные панели трогать нельзя
+    if (box.dataset.tabsReady) { return; }
+    box.dataset.tabsReady = "1";
     var found = panels(box);
     // одна панель — полоска вкладок ничего не добавляет, только шумит
     if (found.length < 2) { return; }
@@ -97,5 +101,15 @@
     show(wanted, false);
   }
 
-  document.querySelectorAll("[data-tabs]").forEach(build);
+  // Внутри root — страница целиком или вставленный кусок (htmx-setup.js)
+  function start(root) {
+    root = root || document;
+    if (root.matches && root.matches("[data-tabs]")) { build(root); }
+    root.querySelectorAll("[data-tabs]").forEach(build);
+  }
+
+  window.OY = window.OY || {};
+  window.OY.tabs = start;
+
+  start(document);
 })();

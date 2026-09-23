@@ -1,7 +1,12 @@
-"""Формы для CRUD-интерфейса.
+"""Форма компонента: поля, проверки, выпадающие списки, секции.
 
-Формы строятся из моделей на лету: полей много и они у каждой группы свои,
+Форма строится из модели на лету: полей много и они у каждой группы свои,
 поэтому руками их описывать смысла нет.
+
+Остальные формы лежат рядом с тем, чем пользуются: фильтры списков — в
+:mod:`components.filter_forms`, загрузка CSV со ссылками — в
+:mod:`components.link_views`, загрузка STEP-модели — в
+:mod:`components.image_views`.
 """
 
 from functools import lru_cache
@@ -10,11 +15,9 @@ from django import forms
 from django.core.validators import RegexValidator, URLValidator
 from django.forms import modelform_factory
 
-from . import step
 from .duplicates import find_existing
 from .matching import is_placeholder, usable
 from .options import table_options
-from .querystring import values_of
 
 # эти поля заполняются автоматически и в форме не показываются
 # OY ID в форму не выводится: он назначается по нумерации и правке не
@@ -150,7 +153,10 @@ URL_VALIDATOR = optional(URLValidator(
 
 # основной блок: единый для всех групп компонентов, порядок задан вручную
 MAIN_ORDER = (
-    "vendor_pn", "vendor", "tracker_url", "oy_pn", "gbt_pn", "group", "subgroup",
+    # OY ID в форме сайта нет (EXCLUDED) — строка работает для админки,
+    # где он правится (см. build_form_class)
+    "vendor_pn", "vendor", "tracker_url", "oy_pn", "oy_id", "gbt_pn",
+    "group", "subgroup",
     "country", "smt_tht", "description", "notice", "datasheet", "package",
     "packaging", "pb_no_pb", "status",
     # в таблицах замен этих двух полей нет — они просто не выведутся
@@ -176,6 +182,13 @@ PHYSICAL = (
     "temperature_min_c", "temperature_max_c",
 )
 
+FORM_SECTIONS = (
+    ("Основные сведения", MAIN_ORDER),
+    ("Электрические параметры", ELECTRICAL),
+    ("Физические параметры", PHYSICAL),
+)
+OTHER_SECTION = "Прочие параметры"
+
 
 class ComponentForm(forms.ModelForm):
     """Базовая форма: подмешивает css-классы и убирает лишний шум."""
@@ -183,6 +196,8 @@ class ComponentForm(forms.ModelForm):
     # таблица компонентов: подставляется в build_form_class,
     # по ней справочник решает, какие поля показывать списком
     option_table = ""
+    # поля, убранные из формы для этой группы (registry.HIDDEN_FIELDS)
+    hidden_fields = ()
 
     confirm_duplicate = forms.BooleanField(
         required=False,
@@ -313,6 +328,18 @@ class ComponentForm(forms.ModelForm):
         self._check_duplicates(cleaned)
         return cleaned
 
+    def save(self, commit=True):
+        # Скрытое поле в форму не попадает, и у новой записи осталось бы
+        # NULL, а незаполненное в базе принято писать «---» — сторонний софт
+        # и сопоставление аналогов ждут именно его
+        obj = super().save(commit=False)
+        for name in self.hidden_fields:
+            if not (getattr(obj, name, None) or "").strip():
+                setattr(obj, name, BLANK_VALUE)
+        if commit:
+            obj.save()
+        return obj
+
     def _check_duplicates(self, cleaned):
         """Ищет в библиотеке компонент с тем же Vendor PN или GBT PN.
 
@@ -353,158 +380,51 @@ class ComponentForm(forms.ModelForm):
 
 
 @lru_cache(maxsize=None)
-def build_form_class(model, table=""):
+def build_form_class(model, table="", hidden=(), editable=()):
     """Класс формы для группы компонентов.
 
     Собирается один раз на пару «модель + таблица» и дальше переиспользуется:
     полей в форме под сотню, и строить класс заново на каждое открытие
     страницы незачем. Значения выпадающих списков в классе не зашиты — их
     читает ``__init__``, поэтому правка справочника видна сразу.
+
+    ``editable`` возвращает в форму поля из :data:`EXCLUDED`. Нужно это
+    админке: OY ID на сайте назначается сам, а в админке его приходится
+    вписывать руками — например, замене, которую там не из чего взять.
     """
-    fields = [f.name for f in model._meta.fields if f.name not in EXCLUDED]
-    base = type("BoundComponentForm", (ComponentForm,), {"option_table": table})
+    skip = (set(EXCLUDED) - set(editable)) | set(hidden)
+    fields = [f.name for f in model._meta.fields if f.name not in skip]
+    base = type("BoundComponentForm", (ComponentForm,),
+                {"option_table": table, "hidden_fields": tuple(hidden)})
     return modelform_factory(model, form=base, fields=fields)
+
+
+def field_sections(names):
+    """``[(заголовок, [имена полей])]`` — раскладка полей по секциям.
+
+    Одна на сайт и админку: раньше секции знала только форма сайта, и в
+    админке те же сорок полей шли одной колонкой в порядке модели.
+    """
+    names = list(names)
+    present = set(names)
+    used = set()
+    sections = []
+    for title, order in FORM_SECTIONS:
+        picked = [n for n in order if n in present and n not in used]
+        used.update(picked)
+        if picked:
+            sections.append((title, picked))
+    # страховка: новое поле в модели не потеряется, а выйдет отдельной секцией
+    rest = [n for n in names if n not in used]
+    if rest:
+        sections.append((OTHER_SECTION, rest))
+    return sections
 
 
 def group_fields(form):
     """Раскладывает поля формы на секции для шаблона."""
-    used = set()
-    sections = []
-
-    def take(title, names):
-        picked = [form[n] for n in names if n in form.fields and n not in used]
-        used.update(f.name for f in picked)
-        if picked:
-            sections.append((title, picked))
-
     # галочка подтверждения дубля показывается отдельно, рядом с
     # предупреждением, а не среди параметров компонента
-    used.add(CONFIRM_FIELD)
-
-    take("Основные сведения", MAIN_ORDER)
-    take("Электрические параметры", ELECTRICAL)
-    take("Физические параметры", PHYSICAL)
-    # страховка: новое поле в модели не потеряется, а выйдет отдельной секцией
-    take("Прочие параметры", [n for n in form.fields if n not in used])
-    return sections
-
-
-class FilterSelect(forms.SelectMultiple):
-    """Список фильтра: значения в строке запроса разделены вертикальной чертой.
-
-    Браузер сам отправил бы их повторяющимся параметром; страница склеивает
-    их в один — так ссылку проще прочитать и переслать. Разбор здесь нужен,
-    чтобы форма отметила выбранное, когда страница открыта по такой ссылке.
-    """
-
-    def value_from_datadict(self, data, files, name):
-        return values_of(data, name)
-
-
-class FilterForm(forms.Form):
-    """Фильтры над списком. Значения подставляются из самой таблицы.
-
-    Каждый фильтр принимает несколько значений сразу: выбранные уходят в
-    строку запроса одним и тем же именем (``?vendor=TDK&vendor=Murata``) и
-    складываются по «или». Пустого варианта «все» в списке нет: пока ничего
-    не выбрано, фильтр и так не применяется, а на кнопке стоит его название
-    (его берёт из ``data-title`` скрипт выпадающего списка).
-    """
-
-    q = forms.CharField(required=False, label="Поиск")
-
-    def __init__(self, *args, filters=(), **kwargs):
-        """filters — список (имя поля, подпись, доступные значения)."""
-        super().__init__(*args, **kwargs)
-        # Класс здесь остаётся руками, в отличие от остальных форм: панель
-        # фильтров рисуется в list.html напрямую ({{ form.q }}), мимо
-        # crispy, — а значит и конвертеры до неё не доходят.
-        self.fields["q"].widget.attrs.update(
-            {"class": "field field--search", "type": "search",
-             "placeholder": "PN, описание, производитель…",
-             "autocomplete": "off"})
-        for name, label, values in filters:
-            self.fields[name] = forms.MultipleChoiceField(
-                required=False,
-                label=label,
-                choices=[(v, v) for v in values],
-                widget=FilterSelect(attrs={
-                    "class": "field field--select",
-                    "data-autosubmit": "1",
-                    "data-title": str(label),
-                }),
-            )
-
-
-class LinkImportForm(forms.Form):
-    """Загрузка CSV со ссылками на компоненты.
-
-    По умолчанию идёт пробный проход: сначала смотрим, что нашлось и что
-    нет, и только потом записываем. Файл придётся выбрать второй раз —
-    зато между показом и записью ничего не хранится на сервере, и то, что
-    вы увидели, посчитано ровно по тому файлу, который отправляете.
-    """
-
-    file = forms.FileField(
-        label="Файл CSV",
-        help_text="Две колонки: «Ключ» — ссылка, «Задача» — название "
-                  "с артикулом в конце")
-    dry_run = forms.BooleanField(
-        required=False, initial=True, label="Только проверить, не записывать")
-
-    def clean_file(self):
-        uploaded = self.cleaned_data["file"]
-        if not uploaded.name.lower().endswith(".csv"):
-            raise forms.ValidationError(
-                f"Нужен файл .csv, а выбран {uploaded.name}")
-        return uploaded
-
-
-class StepImageForm(forms.Form):
-    """STEP-файл, из которого делается картинка компонента.
-
-    Форма отдельная от формы компонента, а не лишнее поле в ней, по двум
-    причинам. Поля компонента собираются из модели, а этого поля в модели
-    нет и быть не может: таблицы компонентов ведём не мы. И картинка
-    принадлежит не компоненту, а его посадочному месту
-    (:class:`components.models.FootprintImage`) — её можно заменить или
-    убрать, не трогая сам компонент.
-
-    Живёт на своей странице (``components:image``): загрузка меняет
-    картинку у всех компонентов с этим footprint, и прятать такое
-    действие внутри правки одной записи было бы нечестно.
-
-    Файл не сохраняется. Из него делают картинку и выбрасывают — почему
-    так, написано в :mod:`components.step`.
-    """
-
-    prefix = "step"
-
-    step_file = forms.FileField(
-        required=False, label="STEP-файл",
-        help_text="Из модели сделается картинка для карточки. "
-                  "Сам файл не сохраняется")
-    drop_image = forms.BooleanField(
-        required=False,
-        label="Удалить картинку посадочного места (у всех компонентов с ним)")
-
-    def clean_step_file(self):
-        uploaded = self.cleaned_data.get("step_file")
-        if uploaded:
-            # размер и расширение — до чтения содержимого
-            step.check(uploaded)
-        return uploaded
-
-    def clean(self):
-        cleaned = super().clean()
-        uploaded, drop = cleaned.get("step_file"), cleaned.get("drop_image")
-        if uploaded and drop:
-            raise forms.ValidationError(
-                "Выбран файл и одновременно отмечено удаление — оставьте "
-                "что-то одно")
-        # На отдельной странице пустая отправка — не «ничего не меняем»,
-        # а скорее забытый файл. Молча вернуть человека в карточку значило
-        # бы, что он решит, будто картинка загрузилась
-        if not uploaded and not drop and not self.errors:
-            raise forms.ValidationError("Выберите STEP-файл")
-        return cleaned
+    names = [n for n in form.fields if n != CONFIRM_FIELD]
+    return [(title, [form[n] for n in picked])
+            for title, picked in field_sections(names)]

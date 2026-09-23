@@ -134,12 +134,20 @@
     });
   }
 
-  function start() {
-    var inputs = document.querySelectorAll('input[type="file"]');
+  // Обработчики перетаскивания вешаются на документ один раз, поля
+  // оформляются в каждом куске страницы
+  var guarded = false;
+
+  function start(root) {
+    root = root && root.querySelectorAll ? root : document;
+    var inputs = root.querySelectorAll('input[type="file"]');
     if (!inputs.length) { return; }
     inputs.forEach(enhance);
-    guard();
+    if (!guarded) { guarded = true; guard(); }
   }
+
+  window.OY = window.OY || {};
+  window.OY.files = start;
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start);

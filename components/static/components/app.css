@@ -15,128 +15,8 @@
 
 /* ============ 1. Токены ================================================ */
 
-:root {
-  /* палитра */
-  --purple: #952aff;
-  --purple-2: #9224ff;
-  --purple-soft: rgba(149, 42, 255, 0.1);
-  /* контур подсветки: сиреневый заметнее фона, но не спорит с текстом */
-  --purple-ring: rgba(149, 42, 255, 0.22);
-  --fault: #d7263d;
-  --fault-soft: rgba(215, 38, 61, 0.1);
-
-  /* Служебные цвета состояний. В брендбуке их нет — он описывает
-     фирменные цвета, а не индикацию, — поэтому взяты приглушённые
-     оттенки, которые не спорят с сиреневым. Жёлтый не используется:
-     брендбук закрепляет его за HR-коммуникациями. */
-  --ok: #16794c;
-  --ok-soft: rgba(22, 121, 76, 0.12);
-  --info: #2a639f;
-  --info-soft: rgba(42, 99, 159, 0.12);
-
-  /* поверхности и текст — светлая тема */
-  --bg: #f0f0f0;
-  --surface: #ffffff;
-  --surface-2: #f7f7f8;
-  --hover: #e9e9ea;
-  /* поле ввода в форме: на полтона отличается от карточки, чтобы было
-     видно, куда писать, — но не настолько, чтобы форма зарябила */
-  --field: #f5f6f7;
-  --ink: #272b32;
-  --ink-2: #3a424b;
-  --muted: #616a75;
-  --line: #e4e4e6;
-  --line-soft: #ededef;
-  --on-accent: #ffffff;
-
-  /* глубина: тонкий контур вместо тяжёлых теней */
-  --ring: 0 0 0 1px rgba(39, 43, 50, 0.07);
-  --shadow-sm: 0 1px 2px rgba(39, 43, 50, 0.06);
-  --shadow-md: 0 8px 24px rgba(39, 43, 50, 0.12);
-  --shadow-lg: 0 16px 48px rgba(39, 43, 50, 0.18);
-
-  /* шаг сетки */
-  --s-1: 4px;
-  --s-2: 8px;
-  --s-3: 12px;
-  --s-4: 16px;
-  --s-5: 20px;
-  --s-6: 32px;
-
-  /* скругления */
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 20px;
-  --pill: 999px;
-
-  /* типографика */
-  /* «Verdana Medium» — отдельная гарнитура, она есть не везде: если её нет,
-     подхватится обычная Verdana, и рисунок букв останется тем же, изменится
-     только насыщенность. Geneva — её ближайший системный родственник. */
-  --font-ui: "Verdana Medium", "Verdana Pro Medium", Verdana, Geneva, sans-serif;
-  /* Артикулы, OY ID и имена таблиц. Моноширинный: в колонке знаки встают
-     друг под друга, и различить «0» и «O», «1» и «l» в чужом артикуле
-     проще — на глаз, не вчитываясь. */
-  --font-data: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  /* Разрядка артикулов. Roboto набирает плотно, а в артикуле важен каждый
-     знак: с просветом «GRM188R71H104KA93D» читается по одному символу, а
-     не сплошной строкой. Идёт всюду вместе с --font-data. */
-  --tracking-data: 0.04em;
-  /* Разрядка интерфейсного текста. Она заводилась под узкую гарнитуру;
-     Verdana широкая сама по себе, и добавлять ей просвета не нужно —
-     отсюда ноль. Если строки покажутся тесными, поднимать здесь: 0.02em
-     заметно просторнее. Заголовки и подписи, у которых letter-spacing
-     задан свой, этим не задеваются. */
-  --tracking: 0;
-  --weight-medium: 700;
-  --weight-body: 500;
-
-  /* движение */
-  --fast: 120ms cubic-bezier(0.2, 0, 0.2, 1);
-  --slow: 240ms cubic-bezier(0.2, 0, 0.2, 1);
-
-  --rail: 268px;
-  --topbar: 60px;
-
-  color-scheme: light;
-}
-
-/* тёмная тема — в брендбуке это дополнительное цветовое решение (2.4) */
-:root[data-theme="dark"] {
-  --bg: #1a1e23;
-  --surface: #23282e;
-  --surface-2: #272c33;
-  --hover: #2e343b;
-  /* на тёмном поле ввода отличаются в другую сторону — темнее карточки:
-     углублённое поле читается лучше, чем светлое пятно */
-  --field: #1e2329;
-  --ink: #eef0f2;
-  --ink-2: #c3c9d0;
-  --muted: #8d97a2;
-  --line: #333a42;
-  --line-soft: #2c323a;
-  --purple: #a95cff;
-  --purple-2: #9a3dff;
-  --purple-soft: rgba(169, 92, 255, 0.16);
-  --purple-ring: rgba(169, 92, 255, 0.32);
-  /* На тёмном фоне те же цвета нужны светлее, иначе текст не читается.
-     Красный тут светлеет впервые: #d7263d на тёмном сером даёт контраст
-     около 2.4 — этого мало и для чипа «удалён», и для текста ошибок,
-     который жил с ним и раньше. */
-  --fault: #f87f92;
-  --fault-soft: rgba(248, 127, 146, 0.16);
-  --ok: #57c08d;
-  --ok-soft: rgba(87, 192, 141, 0.16);
-  --info: #7bb0f0;
-  --info-soft: rgba(123, 176, 240, 0.16);
-
-  --ring: 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
-
-  color-scheme: dark;
-}
+/* Токены — в tokens.css: их читает и админка. Подключается до этого файла
+   (components/base.html, login.html). */
 
 /* ============ 2. База =================================================== */
 
@@ -181,10 +61,10 @@ a:hover { text-decoration: underline; }
 }
 
 /* аккуратные полосы прокрутки в областях данных */
-.table-wrap, .rail { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.table-wrap::-webkit-scrollbar, .rail::-webkit-scrollbar { width: 10px; height: 10px; }
-.table-wrap::-webkit-scrollbar-thumb, .rail::-webkit-scrollbar-thumb {
-  background: var(--line);
+.table-wrap, .rail__scroll { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.table-wrap::-webkit-scrollbar, .rail__scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.table-wrap::-webkit-scrollbar-thumb, .rail__scroll::-webkit-scrollbar-thumb {
+  background-color: var(--line);
   border: 3px solid transparent;
   background-clip: padding-box;
   border-radius: var(--pill);
@@ -231,14 +111,15 @@ a:hover { text-decoration: underline; }
 .topbar__logo:hover { text-decoration: none; }
 .topbar__logo img { display: block; width: 148px; min-width: 130px; height: auto; }
 
-.topbar__section {
+/* Версия — рядом с логотипом, но тише его: она нужна, когда
+   сверяешь, обновился ли сервер, а не при каждом взгляде на шапку.
+   Моноширинным, как все номера в интерфейсе */
+.topbar__version {
+  font-family: var(--font-data);
   font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #a8b0b8;
+  letter-spacing: 0.04em;
+  color: #7d8691;
   white-space: nowrap;
-  padding-left: 20px;
-  border-left: 1px solid #3a414b;
 }
 
 .topbar__search { position: relative; flex: 0 1 clamp(280px, 34vw, 620px); }
@@ -279,7 +160,14 @@ a:hover { text-decoration: underline; }
   background: #272c33;
   color: #97a0a9;
 }
-.topbar__search input:focus ~ .topbar__hint { opacity: 0; }
+.topbar__search input:focus ~ .topbar__hint,
+.topbar__search input:not(:placeholder-shown) ~ .topbar__hint { opacity: 0; }
+/* Правый отступ в 76px держит место под подсказку Ctrl K. Штатный крестик
+   очистки браузер рисует у края текста, а не поля, — с таким отступом он
+   висит посреди строки. Когда подсказки нет (поле в фокусе или в нём уже
+   есть запрос), место отдаётся крестику. */
+.topbar__search input:focus,
+.topbar__search input:not(:placeholder-shown) { padding-right: var(--s-3); }
 
 .topbar__user {
   display: flex;
@@ -325,16 +213,29 @@ a:hover { text-decoration: underline; }
 
 /* ============ 5. Навигация ============================================== */
 
+/* Скругление и прокрутка — на разных элементах: Chromium не обрезает
+   прямоугольную дорожку скроллбара по border-radius самого прокручиваемого
+   блока, и в углу панели торчал светлый зубец. Внешний блок скругляет и
+   режет, внутренний прокручивается. Flex-колонка, а не height: 100%:
+   у .rail только max-height, процент от него дал бы auto, и низ меню
+   обрезался бы без прокрутки. */
 .rail {
   width: var(--rail);
   flex: 0 0 var(--rail);
-  padding: var(--s-4) var(--s-3);
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border-radius: var(--r-lg);
   box-shadow: var(--ring);
   position: sticky;
   top: calc(var(--topbar) + var(--s-4));
   max-height: calc(100vh - var(--topbar) - var(--s-5));
+  overflow: hidden;
+}
+.rail__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--s-4) var(--s-3);
   overflow-y: auto;
 }
 
@@ -445,6 +346,9 @@ a:hover { text-decoration: underline; }
 .chip--edited { color: var(--info); background: var(--info-soft); }
 .chip--gone { color: var(--fault); background: var(--fault-soft); }
 .chip--dup { color: var(--purple); background: var(--purple-soft); }
+/* картинка — не правка данных компонента, поэтому нейтральный цвет: в
+   списке она не должна спорить за внимание с «изменён» и «удалён» */
+.chip--image { color: var(--ink-2); background: var(--surface-2); }
 
 /* ============ 7. Кнопки и поля ========================================== */
 
@@ -477,6 +381,27 @@ a:hover { text-decoration: underline; }
 .btn--danger { color: var(--fault); border-color: rgba(215, 38, 61, 0.35); }
 .btn--danger:hover { background: rgba(215, 38, 61, 0.08); border-color: var(--fault); color: var(--fault); }
 .btn--ghost { background: transparent; }
+/* «Сбросить» в панели фильтров — в цвет заданных фильтров: кнопка
+   появляется, только когда что-то задано, и по цвету видно, что снимает
+   она именно подсвеченное. Крестик — маской, чтобы он брал цвет текста */
+.btn--reset {
+  gap: 5px;
+  padding: 0 var(--s-3);
+  border-color: var(--purple-ring);
+  background: var(--purple-soft);
+  color: var(--purple);
+}
+.btn--reset::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask: center / contain no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E");
+  mask: center / contain no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E");
+}
+.btn--reset:hover { border-color: var(--purple); background: var(--purple-soft); color: var(--purple); }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
 
 .field {
@@ -502,6 +427,8 @@ a:hover { text-decoration: underline; }
 .field[pattern]:invalid:focus { border-color: var(--fault); box-shadow: 0 0 0 3px var(--fault-soft); }
 .field::placeholder { color: var(--muted); }
 .field--search { width: 280px; }
+/* в панели фильтров списка — поуже: там ещё десяток фильтров в ряд */
+#list-filters .field--search { width: 220px; }
 /* фильтр показывает своё название целиком, а выбранные значения — сколько
    поместится; предел нужен, чтобы одна длинная строка не занимала всю
    панель, дальше работает многоточие */
@@ -1493,6 +1420,9 @@ dl.specs--pairs > div {
 /* в форме поля тянутся на всю ширину колонки, в панели фильтров — по
    содержимому, но не шире, чем позволяет .field--select */
 .formrow .pick, .formrow .pick__trigger { width: 100%; }
+/* предел .field--select написан для панели фильтров; в форме список
+   встаёт в ряд с полями ввода и должен быть той же ширины */
+.formrow .field--select { max-width: none; }
 
 /* родной список остаётся в DOM: значение и отправка формы — на нём */
 .pick__native {
@@ -1625,6 +1555,143 @@ dl.specs--pairs > div {
 }
 .pick__option[hidden] { display: none; }
 .pick__empty { margin: 0; padding: 9px var(--s-3); color: var(--muted); font-size: 13px; }
+
+/*
+   Поле даты. Как и у списков, родное поле остаётся в форме и хранит
+   значение, а видно текстовое «дд.мм.гггг» и кнопку календаря: календарь
+   родного поля рисует браузер, и ни цвета, ни тёмная тема сайта до него
+   не доходят. Разметку строит components/static/components/date.js.
+*/
+
+.datepick { position: relative; display: inline-flex; max-width: 100%; vertical-align: middle; }
+.formrow .datepick, .formrow .datepick__input { width: 100%; }
+
+.datepick__native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ширина — ровно под «дд.мм.гггг» и кнопку справа */
+.datepick__input { width: 138px; padding-right: 36px; font-variant-numeric: tabular-nums; }
+.datepick__input:hover:not(:disabled):not(:focus) { border-color: var(--purple-ring); }
+
+.datepick__btn {
+  position: absolute;
+  top: 50%;
+  right: var(--s-1);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: color var(--fast), background var(--fast);
+}
+.datepick__btn svg { width: 15px; height: 15px; }
+.datepick__btn:hover:not(:disabled),
+.datepick.is-open .datepick__btn { color: var(--purple); background: var(--purple-soft); }
+.datepick__btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--purple-soft); color: var(--purple); }
+.datepick__btn:disabled { cursor: default; opacity: 0.5; }
+
+/* дата в фильтре задана — видно по цвету, как у выпадающих фильтров */
+.datepick.is-set .datepick__input { border-color: var(--purple); color: var(--purple); }
+.datepick.is-set .datepick__btn { color: var(--purple); }
+/* Набранная дата, которой нет (31.02). Правило стоит после подсветки
+   заданного фильтра и весит столько же — поэтому перебивает её: ошибка
+   важнее того, что фильтр был задан */
+.datepick .datepick__input.is-invalid { border-color: var(--fault); color: var(--ink); }
+.datepick .datepick__input.is-invalid:focus { box-shadow: 0 0 0 3px var(--fault-soft); }
+
+.cal {
+  position: fixed;
+  z-index: 70;
+  width: 264px;
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  animation: pick-in var(--fast) both;
+}
+.cal[hidden] { display: none; }
+
+.cal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+.cal__title { font-size: 13px; font-weight: var(--weight-medium); color: var(--ink); }
+.cal__nav {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cal__nav svg { width: 14px; height: 14px; }
+.cal__nav:hover { color: var(--purple); background: var(--purple-soft); }
+
+.cal__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal__weekday {
+  padding: var(--s-1) 0;
+  font-size: 11px;
+  text-align: center;
+  color: var(--muted);
+}
+.cal__day {
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  cursor: pointer;
+}
+.cal__day:hover:not(:disabled) { background: var(--surface-2); }
+.cal__day:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--purple-ring); }
+.cal__day.is-other { color: var(--muted); }
+/* сегодня — рамкой, выбранный день — заливкой: вместе они не спорят */
+.cal__day.is-today { box-shadow: inset 0 0 0 1px var(--purple-ring); color: var(--purple); }
+.cal__day.is-selected,
+.cal__day.is-selected:hover { background: var(--purple); color: var(--on-accent); font-weight: var(--weight-medium); }
+.cal__day:disabled { opacity: 0.35; cursor: default; }
+
+.cal__foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line-soft);
+}
+.cal__link {
+  padding: var(--s-1) var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--purple);
+  cursor: pointer;
+}
+.cal__link:hover { background: var(--purple-soft); }
 
 /* ============ 11. Главная =============================================== */
 
@@ -2105,7 +2172,7 @@ body.lightbox-open { overflow: hidden; }
   .table-wrap { max-height: none; min-height: 0; }
   .topbar { flex-wrap: wrap; padding: var(--s-2) var(--s-3); gap: var(--s-3); }
   .topbar__side { flex: 1 1 auto; }
-  .topbar__section { display: none; }
+  .topbar__version { display: none; }
   .topbar__search { flex: 1 1 100%; order: 3; }
   .topbar__logo img { width: 130px; }
   .hero { padding: var(--s-5) var(--s-4) 0; }
@@ -2131,4 +2198,27 @@ body.lightbox-open { overflow: hidden; }
     animation-iteration-count: 1 !important;
   }
   .cables::after { opacity: 0.5; }
+}
+
+/* ---- HTMX --------------------------------------------------------------- */
+
+/* Пока список обновляется, его строки приглушены: иначе после смены
+   фильтра или страницы полсекунды видна старая выборка, и непонятно,
+   отработал ли запрос вообще. Только строки, не заголовки: гаснущие и
+   загорающиеся названия колонок выглядели как мигание. HTMX ставит класс
+   htmx-request на время запроса */
+#list-rows { transition: opacity var(--fast); }
+#list-rows.htmx-request { opacity: 0.55; pointer-events: none; }
+
+/* ---- сотрудники и роли: галочки по строке на сотрудника ---------------- */
+/* users/templates/users/roles.html                                          */
+
+.rolegrid th.rolegrid__role,
+.rolegrid td.rolegrid__role { text-align: center; width: 150px; }
+.rolegrid input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--purple);
+  cursor: pointer;
 }

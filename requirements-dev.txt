@@ -1,0 +1,12 @@
+# Зависимости для разработки — поверх рабочих. На сервер не ставятся:
+# образ собирается из requirements.txt (см. Dockerfile).
+#
+#   venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+#   venv\Scripts\python.exe -m ruff check .
+#
+# Версия ruff закреплена: от версии к версии у него меняются правила по
+# умолчанию, и без закрепления одна и та же проверка у двоих разработчиков
+# отвечала бы по-разному.
+-r requirements.txt
+
+ruff==0.16.8

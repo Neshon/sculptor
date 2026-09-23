@@ -41,5 +41,6 @@ urlpatterns = [
     # платы идут раньше по той же причине
     path("boards/", include("boards.urls")),
     path("servers/", include("servers.urls")),
+    path("users/", include("users.urls")),
     path("", include("components.urls")),
 ]

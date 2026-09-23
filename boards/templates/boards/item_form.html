@@ -67,8 +67,17 @@
         <a class="btn btn--ghost" href="{% url 'boards:bom' board.pk revision.number %}">Отмена</a>
         {% if item %}
           <span class="toolbar__spacer"></span>
-          <a class="btn btn--danger"
-             href="{% url 'boards:item-delete' board.pk revision.number item.pk %}">Удалить</a>
+          {% comment %}
+            Удаление — только POST (item_delete): на GET вид просто
+            возвращает к составу, чтобы строку не стёрла ни предзагрузка
+            ссылки, ни поисковый робот. Поэтому здесь кнопка, а не ссылка:
+            ссылка давала GET, и «Удалить» молча ничего не делал.
+            Отдельную форму внутрь этой не вложить — кнопка отправляет эту
+            же, с тем же csrf_token, но по адресу удаления (formaction).
+            formnovalidate: удалять строку с незаполненным полем можно.
+          {% endcomment %}
+          <button class="btn btn--danger" type="submit" formnovalidate
+                  formaction="{% url 'boards:item-delete' board.pk revision.number item.pk %}">Удалить</button>
         {% endif %}
       </div>
     </form>

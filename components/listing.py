@@ -10,14 +10,18 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 
 from .cache import FILTERS_KEY, cached
-from .db import fallback
+from .db import distinct_values, fallback
 from .options import table_options
 from .querystring import VALUE_SEPARATOR, values_of
 from .registry import get_category
 
 PAGE_SIZES = (25, 50, 100, 200)
 DEFAULT_PAGE_SIZE = 25
-MAX_FILTER_CHOICES = 300
+# Предел вариантов в одном фильтре — страховка от столбца, где значения
+# почти у каждой записи свои: тысячи <option> утяжелили бы страницу. Сверх
+# предела варианты отрезаются молча, поэтому он должен быть больше
+# реального: у разъёмов одних посадочных мест Allegro около пятисот.
+MAX_FILTER_CHOICES = 1000
 NUMERIC_PK = ("AutoField", "BigAutoField", "IntegerField")
 
 
@@ -103,11 +107,8 @@ def _values(category, name, from_options, others):
     queryset = category.model.objects.all()
     if others:
         queryset = queryset.apply_filters(others, category.filter_fields)
-    found = list(queryset.exclude(**{f"{name}__isnull": True})
-                 .exclude(**{name: ""})
-                 .order_by(name)
-                 .values_list(name, flat=True)
-                 .distinct()[:MAX_FILTER_CHOICES])
+    filled = queryset.exclude(**{f"{name}__isnull": True}).exclude(**{name: ""})
+    found = list(distinct_values(filled, name, order=True)[:MAX_FILTER_CHOICES])
 
     if from_options is None:
         return found

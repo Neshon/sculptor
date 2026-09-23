@@ -8,43 +8,44 @@
   <div class="legend__eyebrow">библиотека компонентов</div>
   <div class="legend__row">
     <h1>Журнал изменений</h1>
-    <span class="legend__count">{{ total }} записей</span>
+    <span class="legend__count" id="list-count">{{ total|plural:"запись,записи,записей" }}</span>
   </div>
 </div>
 
 <div class="panel">
+  {% comment %}
+    Панель устроена так же, как у списка компонентов (list.html, там
+    подробности): фильтры с галочками применяются сразу, без кнопки, а с
+    HTMX вместо страницы приходит фрагмент panel ("changes.html#panel",
+    см. change_log). Страницы меняют только строки и номера страниц, число
+    записей в шапке подменяется по id (hx-swap-oob).
+
+    Даты применяются сразу, как и списки (data-autosubmit): поле с
+    календарём (date.js) отдаёт в форму только целую дату, набранную или
+    выбранную, — промежуточных значений вроде года 0002 у него нет.
+  {% endcomment %}
+  {% partialdef panel inline %}
+  <div id="list-panel">
   {# id ждёт _page_size.html: селект «строк» отправляет эту форму #}
-  <form class="toolbar" method="get" id="list-filters">
-    <select class="field field--select" name="action">
-      <option value="">все события</option>
-      {% for value, label in actions %}
-        <option value="{{ value }}" {% if value == selected.action %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
+  <form class="toolbar" method="get" id="list-filters" data-drop-empty
+        {% if htmx_enabled %}
+          hx-get="{% url 'components:changes' %}"
+          hx-target="#list-panel" hx-swap="outerHTML"
+          hx-push-url="true" hx-sync="this:replace"
+          hx-indicator="#list-rows"
+        {% endif %}>
+    {% for field in filter_form %}{{ field }}{% endfor %}
 
-    <select class="field field--select" name="author">
-      <option value="">все сотрудники</option>
-      {% for login, name in authors %}
-        <option value="{{ login }}" {% if login == selected.author %}selected{% endif %}>{{ name }}</option>
-      {% endfor %}
-    </select>
+    <input class="field" type="date" name="since" id="since" value="{{ since }}"
+           title="С какой даты" aria-label="С какой даты" data-autosubmit="1">
+    <input class="field" type="date" name="until" id="until" value="{{ until }}"
+           title="По какую дату включительно" aria-label="По какую дату включительно"
+           data-autosubmit="1">
 
-    <select class="field field--select" name="table">
-      <option value="">все таблицы</option>
-      {% for name in tables %}
-        <option value="{{ name }}" {% if name == selected.table %}selected{% endif %}>{{ name }}</option>
-      {% endfor %}
-    </select>
-
-    <input class="field" type="date" name="since" value="{{ selected.since }}"
-           title="С какой даты">
-    <input class="field" type="date" name="until" value="{{ selected.until }}"
-           title="По какую дату включительно">
-
-    <button class="btn" type="submit">Применить</button>
     {% if request.GET %}
-      <a class="btn btn--ghost" href="{% url 'components:changes' %}">Сбросить</a>
+      <a class="btn btn--reset" href="{% url 'components:changes' %}">Сбросить</a>
     {% endif %}
+    {% include "_page_size.html" %}
   </form>
 
   {% if rows %}
@@ -59,7 +60,7 @@
             <th style="width:130px">Строк изменилось</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="list-rows">
           {% for change in rows %}
             <tr data-href="{% url 'components:change' change.pk %}">
               <td>
@@ -79,7 +80,9 @@
       </table>
     </div>
 
-    {% include "_pagination.html" %}
+    <div id="list-pager"{% if htmx_enabled %} hx-boost="true" hx-target="#list-rows" hx-select="#list-rows" hx-select-oob="#list-pager" hx-swap="outerHTML" hx-indicator="#list-rows"{% endif %}>
+      {% include "_pagination.html" with only_pages=1 %}
+    </div>
   {% else %}
     <div class="empty">
       <h2>Записей нет</h2>
@@ -96,5 +99,10 @@
       {% endif %}
     </div>
   {% endif %}
+  </div>
+  {% if htmx_request %}
+    <span class="legend__count" id="list-count" hx-swap-oob="true">{{ total|plural:"запись,записи,записей" }}</span>
+  {% endif %}
+  {% endpartialdef %}
 </div>
 {% endblock %}

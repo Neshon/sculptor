@@ -1,4 +1,5 @@
 {% extends "components/base.html" %}
+{% load components_extras %}
 
 {% block title %}Удаление {{ object.display_title }}{% endblock %}
 
@@ -79,7 +80,7 @@
       <div class="tagcloud">
         {% if analogs %}
           <span class="muted">
-            В парной таблице {{ analogs }} записей с этим OY ID. Они не
+            В парной таблице {{ analogs|plural:"запись,записи,записей" }} с этим OY ID. Они не
             удалятся, но останутся без оригинала — искать замену будет не к чему.
           </span>
         {% else %}

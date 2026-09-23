@@ -9,10 +9,9 @@
 """
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db import DatabaseError
 
 from components.models import OptionField, OptionValue
-from components.registry import CATEGORIES
+from components.options import source_categories, values_in_data
 
 
 class Command(BaseCommand):
@@ -34,9 +33,7 @@ class Command(BaseCommand):
 
     def collect(self, field, wanted, limit_to_tables):
 
-        categories = [c for c in CATEGORIES.values()
-                      if field in c.field_names
-                      and (not wanted or c.table in wanted)]
+        categories = source_categories(field, wanted)
         if not categories:
             raise CommandError(f"Поле «{field}» не найдено ни в одной таблице")
 
@@ -46,27 +43,14 @@ class Command(BaseCommand):
         option_field, _ = OptionField.objects.get_or_create(
             field=field, tables=tables)
 
-        found = set()
-        for category in categories:
-            try:
-                values = (category.model.objects
-                          .exclude(**{f"{field}__isnull": True})
-                          .exclude(**{field: ""})
-                          # без сброса сортировки (у таблиц она по -id)
-                          # ключ попадает в запрос рядом со значением, и
-                          # distinct перестаёт что-либо убирать: база
-                          # отдаёт все строки таблицы, а повторы снимает
-                          # уже питон
-                          .order_by()
-                          .values_list(field, flat=True)
-                          .distinct())
-            except DatabaseError as exc:
-                self.stderr.write(self.style.WARNING(f"{category.table}: {exc}"))
-                continue
-            found.update(v.strip() for v in values if v and v.strip())
+        # сбор — общий с админкой («Добавить значения из данных»)
+        found, failed = values_in_data(categories, field)
+        for table in failed:
+            self.stderr.write(self.style.WARNING(
+                f"{table}: таблица не прочиталась, её значения не собраны"))
 
         added = 0
-        for value in sorted(found):
+        for value in found:
             _, is_new = OptionValue.objects.get_or_create(
                 option_field=option_field, value=value)
             added += int(is_new)

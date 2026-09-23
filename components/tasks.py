@@ -36,6 +36,7 @@ from django.tasks import task, task_backends
 from django.tasks.backends.immediate import ImmediateBackend
 from django.utils import timezone
 
+from .history import record_image
 from .models import FootprintImage, StepRenderJob
 from .step import StepRenderError, queue_path, render_file
 
@@ -152,8 +153,18 @@ def run_render_job(job_id):
             return _finish(job, StepRenderJob.FAILED,
                            f"Рендер упал: {type(exc).__name__}: {exc}")
 
+        # чья картинка была до этой — для записи «было — стало» в журнале
+        previous = FootprintImage.for_footprint(job.footprint)
+        replaced = previous.source_name if previous else ""
+
         FootprintImage.store(job.footprint, png, source_name=job.source_name,
                              author=job.author)
+        # В журнал — только удавшийся рендер: неудачная попытка картинку не
+        # поменяла, и в истории компонента ей делать нечего (она видна в
+        # заявке). Пакетная загрузка компонента не указывает — там и записи нет
+        record_image(job.component_table, job.component_id, job.author,
+                     job.footprint, old=replaced,
+                     new=job.source_name or "изображение")
         return _finish(job, StepRenderJob.DONE,
                        f"{triangles} треугольников, {colors} цветов")
     finally:

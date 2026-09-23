@@ -1,114 +1,112 @@
-/* Фирменная тема OpenYard для админки Django (мини-брендбук v1.0, 26.09.2024).
-   Django собирает интерфейс админки на CSS-переменных, поэтому почти всё
-   делается переопределением их значений — вёрстка админки не трогается,
-   и обновление Django ничего не сломает.
+/* Админка Django в фирменном стиле — тем же, что у справочника.
 
-   Палитра и типографика — те же, что в app.css: #952AFF и #9224FF,
-   #272B32, #F0F0F0/#E4E4E4, Verdana Medium, Roboto Mono
-   для артикулов. Жёлтый #FFC700 в идентификации не участвует и оставлен
-   только за предупреждениями — это функциональный сигнал, не фирменный цвет. */
+   Django собирает интерфейс админки на CSS-переменных, поэтому стиль
+   задаётся их значениями, а вёрстка админки не трогается — и обновление
+   Django её не сломает.
+
+   Значения — не числа, а токены сайта из tokens.css. Раньше здесь была
+   своя копия палитры, и она отстала: на сайте появилась тёмная тема, а
+   админка осталась светлой. Теперь цвет, шрифт и скругление меняются в
+   одном месте для обоих интерфейсов, а тёмная тема включается сама —
+   тем же атрибутом data-theme, который ставит сайт (_theme_boot.html).
+
+   Селектор — не один :root. Django объявляет свои переменные через
+   html[data-theme="light"], а этот селектор весомее :root; атрибут
+   data-theme у нас стоит всегда, и значения Django брали верх: крошки
+   становились бирюзовыми, заголовки разделов — белыми на светлом. Равный
+   по весу селектор, объявленный позже, перебивает их надёжно. */
 
 :root,
 html[data-theme="light"],
 html[data-theme="dark"] {
   /* базовые цвета */
-  --primary: #272b32;
-  --secondary: #952aff;
-  --accent: #9224ff;
-  --primary-fg: #ffffff;
+  --primary: var(--surface-2);
+  --secondary: var(--purple);
+  --accent: var(--purple-2);
+  --primary-fg: var(--on-accent);
 
-  --body-fg: #272b32;
-  --body-bg: #f0f0f0;
-  --body-quiet-color: #616a75;
-  --body-loud-color: #272b32;
+  --body-fg: var(--ink);
+  --body-bg: var(--bg);
+  --body-quiet-color: var(--muted);
+  --body-medium-color: var(--ink-2);
+  --body-loud-color: var(--ink);
 
-  /* шапка */
-  --header-color: #f0f0f0;
+  /* шапка: как верхняя панель сайта — тёмная в обеих темах, с фирменной
+     чертой снизу (app.css, .topbar) */
+  --header-color: #c3c9d0;
   --header-branding-color: #ffffff;
   --header-bg: #272b32;
-  --header-link-color: #ffffff;
+  --header-link-color: #eef0f2;
 
   /* хлебные крошки */
-  --breadcrumbs-fg: #3a424b;
-  --breadcrumbs-link-fg: #272b32;
-  --breadcrumbs-bg: #e4e4e4;
+  --breadcrumbs-fg: var(--muted);
+  --breadcrumbs-link-fg: var(--ink-2);
+  --breadcrumbs-bg: var(--bg);
 
   /* ссылки */
-  --link-fg: #952aff;
-  --link-hover-color: #9224ff;
-  --link-selected-fg: #9224ff;
+  --link-fg: var(--purple);
+  --link-hover-color: var(--purple-2);
+  --link-selected-fg: var(--purple-2);
 
   /* линии и подложки */
-  --hairline-color: #ececee;
-  --border-color: #e0e0e2;
-  --darkened-bg: #f0f0f0;
-  --selected-bg: #e4e4e4;
-  --selected-row: #e4e4e4;
+  --hairline-color: var(--line-soft);
+  --border-color: var(--line);
+  --darkened-bg: var(--surface-2);
+  --selected-bg: var(--hover);
+  --selected-row: var(--purple-soft);
 
   /* кнопки */
-  --button-fg: #ffffff;
-  --button-bg: #952aff;
-  --button-hover-bg: #9224ff;
-  --default-button-bg: #272b32;
-  --default-button-hover-bg: #4d545e;
-  --close-button-bg: #868d97;
-  --close-button-hover-bg: #4d545e;
-  --delete-button-bg: #d7263d;
-  --delete-button-hover-bg: #b01f32;
+  --button-fg: var(--on-accent);
+  --button-bg: var(--purple);
+  --button-hover-bg: var(--purple-2);
+  --default-button-bg: var(--purple);
+  --default-button-hover-bg: var(--purple-2);
+  --close-button-bg: var(--muted);
+  --close-button-hover-bg: var(--ink-2);
+  --delete-button-bg: var(--fault);
+  --delete-button-hover-bg: var(--fault);
 
   /* панель действий над списком */
-  --object-tools-bg: #272b32;
-  --object-tools-fg: #ffffff;
-  --object-tools-hover-bg: #952aff;
+  --object-tools-bg: var(--purple);
+  --object-tools-fg: var(--on-accent);
+  --object-tools-hover-bg: var(--purple-2);
 
-  /* сообщения */
-  --message-success-bg: #e4e4e4;
-  /* единственное место с #FFC700: предупреждение — функциональный сигнал,
-     а не элемент фирменной идентификации */
-  --message-warning-bg: rgba(255, 199, 0, 0.24);
-  --message-error-bg: rgba(215, 38, 61, 0.12);
-  --error-fg: #d7263d;
+  /* сообщения. Жёлтый #FFC700 — только здесь: предупреждение —
+     функциональный сигнал, а не элемент фирменной идентификации */
+  --message-success-bg: var(--ok-soft);
+  --message-warning-bg: rgba(255, 199, 0, 0.18);
+  --message-error-bg: var(--fault-soft);
+  --error-fg: var(--fault);
 
-  /* шрифты: Verdana Medium, как в самом справочнике */
-  --font-family-primary: "Verdana Medium", "Verdana Pro Medium", Verdana, Geneva, sans-serif;
-  /* Bold — отступление от брендбука (там только Regular и Medium),
-     сделано ради читаемости плотных таблиц */
-  /* артикулы: моноширинный, чтобы знаки вставали друг под друга */
-  --font-family-data: "Roboto Mono", ui-monospace, SFMono-Regular, monospace;
-  --tracking-data: 0.04em;
+  /* шрифты — те же, что на сайте */
+  --font-family-primary: var(--font-ui);
+  --font-family-monospace: var(--font-data);
 }
 
-/* Django умеет тёмную тему, но фирменный стиль светлый —
-   держим один и тот же вид при любых системных настройках. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --body-bg: #f0f0f0;
-    --body-fg: #272b32;
-    --darkened-bg: #f0f0f0;
-    --selected-row: #e4e4e4;
-    --hairline-color: #ececee;
-    --border-color: #e0e0e2;
-  }
+/* ---- база -------------------------------------------------------------- */
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
 }
-
-/* ---- текст: плотнее и контрастнее, как на основных страницах --------- */
-
-body, td, th, input, select, textarea, .button, a.button, .quiet, .help,
-.module h2, .module caption, #branding h1, .submit-row input, label {
-  font-weight: 700;
+body, td, th, input, select, textarea, .button, a.button, label {
+  font-weight: var(--weight-body);
 }
-body { font-size: 15px; }
-#changelist table, .form-row, .module { font-size: 14px; }
-.help, .quiet, small { color: var(--body-quiet-color); }
+.help, .quiet, small { color: var(--muted); }
 
-/* ---- пластика: скругления и воздух, как на основных страницах -------- */
+/* ---- шапка: как верхняя панель сайта ------------------------------------ */
 
 #header {
-  padding: 14px 24px;
-  border-bottom: 2px solid #952aff;
+  min-height: var(--topbar);
+  padding: 0 var(--s-5);
+  background: #272b32;
+  color: #eef0f2;
+  border-bottom: 2px solid var(--purple);
 }
-#branding h1 { font-weight: 700; letter-spacing: -0.01em; line-height: 1; margin: 0; }
-#branding h1 a:link, #branding h1 a:visited { color: #fff; border: 0; }
+#branding h1 { margin: 0; line-height: 1; }
+#branding h1 a:link, #branding h1 a:visited { color: #ffffff; border: 0; }
 /* минимальный размер логотипа на экране — 130 пикс. по длине (брендбук 2.1) */
 #branding h1 .brand-logo { display: block; width: 148px; min-width: 130px; height: auto; }
 #branding .subline {
@@ -117,70 +115,304 @@ body { font-size: 15px; }
   font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #c2c7cd;
-  font-weight: 400;
+  color: #97a0a9;
 }
-#user-tools a { border-bottom-color: rgba(255, 255, 255, 0.35); }
-/* переключатель тёмной темы отключён вместе с самой темой */
-.theme-toggle { display: none; }
 
-div.breadcrumbs { padding: 12px 24px; border: 0; }
+#user-tools { font-size: 12px; color: #c3c9d0; }
+#user-tools a,
+#logout-form button {
+  color: #eef0f2;
+  border-bottom: 0;
+  text-decoration: none;
+}
+/* «Выйти» у Django — кнопка формы, и шрифт у неё свой, мельче ссылок
+   рядом. Приводим к ним */
+#logout-form button {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  background: none;
+  padding: 0;
+}
+#user-tools a:hover,
+#logout-form button:hover { color: #ffffff; text-decoration: underline; }
+
+/* Переключатель темы Django не работает: его скрипт не подключён (см.
+   base_site.html) — вместо него свой, общий с сайтом */
+.theme-toggle { display: none; }
+.oy-theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: var(--s-2);
+  padding: 0;
+  vertical-align: middle;
+  border: 1px solid #3a424b;
+  border-radius: var(--pill);
+  background: transparent;
+  color: #eef0f2;
+  cursor: pointer;
+}
+.oy-theme-toggle:hover { border-color: var(--purple); color: #ffffff; }
+.oy-theme-toggle svg { width: 16px; height: 16px; }
+
+div.breadcrumbs {
+  padding: var(--s-3) var(--s-5);
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+}
+div.breadcrumbs a { color: var(--ink-2); text-decoration: none; }
+div.breadcrumbs a:hover { color: var(--purple); text-decoration: underline; }
+
+/* ---- панели ------------------------------------------------------------ */
+
+#content { padding: var(--s-4) var(--s-5); }
 
 .module,
 .dashboard #content .module,
-#changelist,
-#content-main .inline-group {
-  border-radius: 20px;
-  overflow: hidden;
+#changelist .changelist-form-container,
+#content-main .inline-group,
+#changelist-filter,
+.submit-row {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--ring);
+  /* clip, а не hidden: hidden делает блок прокручиваемым, и липкая
+     шапка таблицы переставала бы прилипать к краю окна */
+  overflow: clip;
 }
-.module > h2, .module caption, .inline-group h2 {
+/* Список и фильтр — две карточки рядом, а не фильтр внутри списка: так
+   было в прошлой теме, и рамка шла двойной */
+#changelist { gap: var(--s-4); }
+#changelist-filter { align-self: flex-start; }
+.module > h2, .module caption, .inline-group h2,
+#changelist-filter h2 {
+  background: var(--surface-2);
+  color: var(--muted);
   font-size: 11px;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  font-weight: 700;
-  padding: 14px 18px;
+  padding: var(--s-3) var(--s-4);
 }
+.module h2 a, .module caption a { color: var(--ink-2); }
 
-.button, input[type=submit], input[type=button], .submit-row input, a.button {
-  border-radius: 100px;
+/* ---- кнопки: пилюли, как на сайте -------------------------------------- */
+
+.button, input[type=submit], input[type=button], .submit-row input, a.button,
+.object-tools a {
+  border-radius: var(--pill);
   padding: 9px 18px;
-  font-weight: 700;
   border: 0;
+  font-weight: var(--weight-medium);
+  transition: background var(--fast), color var(--fast);
 }
-.object-tools a { border-radius: 100px; letter-spacing: 0.04em; }
-.button, input[type=submit], .object-tools a { transition: filter 120ms ease-out; }
-.button:hover, input[type=submit]:hover, .object-tools a:hover { filter: brightness(0.92); }
+.object-tools a { letter-spacing: 0.04em; }
+.object-tools a:hover { color: var(--on-accent); }
+.submit-row { padding: var(--s-4); }
+.submit-row a.deletelink { border-radius: var(--pill); }
 
-#changelist-filter { border-radius: 20px; }
+/* ---- поля -------------------------------------------------------------- */
+
 #changelist-search input[type="text"],
 input[type="text"], input[type="password"], input[type="email"],
-input[type="url"], input[type="number"], textarea, select {
-  border-radius: 12px;
-  border-color: #e0e0e2;
+input[type="url"], input[type="number"], input[type="search"],
+textarea, select {
+  background: var(--field);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   /* поля не наследуют шрифт от body — задаём явно */
-  font-family: var(--font-family-primary);
+  font-family: var(--font-ui);
   font-size: 14px;
-  font-weight: 700;
 }
-input:focus, textarea:focus, select:focus { border-color: #952aff; outline: 0; }
+input:focus, textarea:focus, select:focus {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px var(--purple-ring);
+  outline: 0;
+}
 
-#changelist table thead th {
+/* ---- таблицы ------------------------------------------------------------ */
+
+#changelist table thead th,
+table thead th {
+  background: var(--surface-2);
+  color: var(--muted);
   font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
-#changelist tbody tr:hover { background: #e9e9ea; }
 #changelist table thead th { position: sticky; top: 0; z-index: 5; }
+tr:nth-child(odd), .row-form-errors { background: transparent; }
+#changelist tbody tr:hover { background: var(--hover); }
+td, th { border-bottom-color: var(--line-soft); }
 
-.submit-row { border-radius: 20px; padding: 16px 18px; }
-.paginator { border-radius: 0 0 20px 20px; }
-.messagelist li { border-radius: 12px; }
+.paginator {
+  background: var(--surface);
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted);
+}
+.messagelist li { border-radius: var(--r-md); }
 
-/* моноширинный шрифт для артикулов в списках */
+/* моноширинный шрифт для артикулов в списках: знаки встают друг под друга */
 #changelist table td.field-oy_pn,
 #changelist table td.field-vendor_pn,
 #changelist table td.field-gbt_pn,
-#changelist table td.field-oy_id {
-  font-family: var(--font-family-data);
+#changelist table td.field-oy_id,
+#changelist table td.field-footprint {
+  font-family: var(--font-data);
   letter-spacing: var(--tracking-data);
 }
+
+/* ---- мелочи, которые у Django выглядят чужими на тёмной теме -------------- */
+
+/* выбранная строка в списке и строки фильтров */
+#changelist-filter li.selected a { color: var(--purple); }
+#changelist-filter a { color: var(--ink-2); }
+/* подсказки и таблицы связанных полей */
+.selector .selector-available h2,
+.selector .selector-chosen h2 { background: var(--surface-2); color: var(--ink-2); }
+.calendarbox, .clockbox { background: var(--surface); border-color: var(--line); }
+
+/* ---- боковая панель разделов ------------------------------------------- */
+
+/* Заголовки разделов — ссылки, и цвет им Django даёт от шапки: на тёмной
+   шапке белый уместен, на светлой панели его не видно вовсе */
+.module caption a.section:link,
+.module caption a.section:visited,
+.module h2 a.section:link,
+.module h2 a.section:visited {
+  color: var(--muted);
+}
+#nav-sidebar .current-app .section:link,
+#nav-sidebar .current-app .section:visited {
+  color: var(--purple);
+}
+#nav-sidebar { font-size: 13px; }
+#nav-sidebar th, #nav-sidebar td { vertical-align: top; padding: 8px 12px; }
+#nav-sidebar .current-model { background: var(--purple-soft); }
+/* поле фильтра разделов: подсказка Django длинная, при нашем кегле она
+   обрезалась на середине слова */
+#nav-filter {
+  width: 100%;
+  margin: 0 0 var(--s-3);
+  padding: 7px 12px;
+  font-size: 12px;
+  background: var(--field);
+}
+.toggle-nav-sidebar { color: var(--muted); background: transparent; }
+
+/* ---- панель поиска и действий над списком ------------------------------- */
+
+/* У Django эти кнопки и поля описаны через #changelist и #toolbar — такие
+   селекторы весомее общих правил выше, и кнопки оставались серыми и
+   ниже полей рядом. Поэтому здесь те же селекторы, и высота у поля и
+   кнопки одна */
+#changelist #toolbar {
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-soft);
+}
+#changelist #toolbar form input[type="text"] {
+  height: 36px;
+  padding: 0 12px;
+  vertical-align: middle;
+}
+#changelist #toolbar form #searchbar { width: min(420px, 60vw); }
+#changelist #toolbar form input[type="submit"],
+#changelist .actions .button,
+#changelist .actions button {
+  height: 36px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--pill);
+  background: var(--purple);
+  color: var(--on-accent);
+  box-shadow: none;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  vertical-align: middle;
+  cursor: pointer;
+}
+#changelist #toolbar form input[type="submit"]:hover,
+#changelist .actions .button:hover,
+#changelist .actions button:hover { background: var(--purple-2); }
+
+#changelist .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line-soft);
+  line-height: normal;
+}
+#changelist .actions label { display: inline-flex; align-items: center; gap: var(--s-2); }
+#changelist .actions select {
+  height: 36px;
+  padding: 0 12px;
+  vertical-align: middle;
+}
+#changelist .actions .action-counter,
+#changelist .actions .all,
+#changelist .actions .question,
+#changelist .actions .clear { color: var(--muted); }
+
+/* ---- строки таблицы ----------------------------------------------------- */
+
+#result_list th,
+#result_list td {
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+#result_list .action-checkbox,
+#result_list .action-checkbox-column {
+  width: 36px;
+  text-align: center;
+}
+#result_list input[type="checkbox"] { margin: 0; vertical-align: middle; }
+#result_list thead th a { color: var(--muted); }
+#result_list thead th.sorted a { color: var(--ink-2); }
+
+/* ---- конструктор выпадающих списков: таблицы сеткой ------------------- */
+/* components/widgets/option_tables.html, поведение — option-tables.js     */
+
+.oy-tables { display: inline-block; margin-top: var(--s-2); }
+.oy-tables__tools {
+  display: flex;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+.oy-tables__tools[hidden] { display: none; }
+.oy-tables__tool {
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: border-color var(--fast), color var(--fast);
+}
+.oy-tables__tool:hover { border-color: var(--purple); color: var(--purple); }
+.oy-tables__grid { border-collapse: collapse; }
+.oy-tables__grid th,
+.oy-tables__grid td {
+  padding: var(--s-1) var(--s-3);
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  vertical-align: middle;
+}
+.oy-tables__grid tbody tr:hover { background: var(--hover); }
+.oy-tables__grid label { display: inline-flex; gap: var(--s-2); align-items: center; }
+.oy-tables__grid code {
+  font-family: var(--font-data);
+  color: var(--muted);
+}
+.oy-tables__group { color: var(--ink); cursor: pointer; }
+.oy-tables__group:hover { color: var(--purple); }

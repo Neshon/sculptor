@@ -1,0 +1,70 @@
+{% extends "components/base.html" %}
+{% load components_extras %}
+
+{% block title %}Журнал доступа{% endblock %}
+
+{% block content %}
+<div class="legend">
+  <div class="legend__eyebrow">администрирование</div>
+  <div class="legend__row">
+    <h1>Журнал доступа</h1>
+    <span class="legend__count">{{ page.paginator.count|plural:"запись,записи,записей" }}</span>
+    <span class="legend__actions">
+      <a class="btn" href="{% url 'users:roles' %}">Сотрудники и роли</a>
+    </span>
+  </div>
+</div>
+
+<div class="panel">
+  {% comment %}
+    Фильтры применяются сразу, как над журналом изменений, но без HTMX:
+    журнал смотрят редко, и обычной перезагрузки здесь достаточно.
+  {% endcomment %}
+  <form class="toolbar" method="get" id="list-filters" data-drop-empty>
+    {% for field in filter_form %}{{ field }}{% endfor %}
+    {% if request.GET %}
+      <a class="btn btn--reset" href="{% url 'users:access-log' %}">Сбросить</a>
+    {% endif %}
+  </form>
+
+  {% if events %}
+    <div class="table-wrap">
+      <table class="grid">
+        <thead>
+          <tr>
+            <th style="width:150px">Событие</th>
+            <th style="width:150px">Когда</th>
+            <th>Сотрудник</th>
+            <th>Роль</th>
+            <th>Кто изменил</th>
+            <th>Адрес</th>
+            <th>Браузер</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for event in events %}
+            <tr>
+              <td><span class="chip chip--event {{ event.chip_class }}">{{ event.get_kind_display|lower }}</span></td>
+              <td class="desc">{{ event.created|date:"d.m.Y H:i:s" }}</td>
+              <td class="desc" title="{{ event.username }}">{{ event.username_display }}</td>
+              <td class="desc">{{ event.detail|default:"—" }}</td>
+              <td class="desc" title="{{ event.actor }}">{{ event.actor_display|default:"—" }}</td>
+              <td class="pn">{{ event.ip|default:"—" }}</td>
+              <td class="desc muted" title="{{ event.user_agent }}">{{ event.user_agent|truncatechars:40|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% include "_pagination.html" with only_pages=1 %}
+  {% else %}
+    <div class="empty">
+      <h2>Записей нет</h2>
+      <p class="muted">
+        {% if request.GET %}Под выбранные условия ничего не подошло.
+        {% else %}Журнал ведётся с этой версии: входы и смены ролей до неё в него не попали.{% endif %}
+      </p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

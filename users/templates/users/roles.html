@@ -1,0 +1,73 @@
+{% extends "components/base.html" %}
+{% load components_extras %}
+
+{% block title %}Сотрудники и роли{% endblock %}
+
+{% block content %}
+<div class="legend">
+  <div class="legend__eyebrow">администрирование</div>
+  <div class="legend__row">
+    <h1>Сотрудники и роли</h1>
+    <span class="legend__count">{{ rows|length|plural:"сотрудник,сотрудника,сотрудников" }}</span>
+    <span class="legend__actions">
+      <a class="btn" href="{% url 'users:access-log' %}">Журнал доступа</a>
+    </span>
+  </div>
+</div>
+
+{% comment %}
+  Одна форма на всех: галочки ролей по строке на сотрудника. Сохраняется
+  разница — что отметили и что сняли; кто, кому и когда, пишет журнал
+  доступа (сигналом, users/access.py), поэтому изменения из админки и
+  init_roles в нём тоже есть.
+
+  Суперпользователь и «статус персонала» здесь только видны: это доступ ко
+  всему и к админке, выдаётся он в админке, а не галочкой в общей таблице.
+{% endcomment %}
+<form method="post" class="panel">
+  {% csrf_token %}
+  <div class="table-wrap">
+    <table class="grid rolegrid">
+      <thead>
+        <tr>
+          <th>Сотрудник</th>
+          <th>Отдел</th>
+          {% for name, description in role_headers %}
+            <th class="rolegrid__role" title="{{ description }}">{{ name }}</th>
+          {% endfor %}
+          <th>Доступ</th>
+          <th>Последний вход</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr{% if not row.user.is_active %} class="muted"{% endif %}>
+            <td class="desc">
+              {{ row.user.get_full_name|default:row.user.get_username }}
+              <span class="muted mono">{{ row.user.get_username }}</span>
+            </td>
+            <td class="desc">{{ row.user.department|default:"—" }}</td>
+            {% for name, has in row.roles %}
+              <td class="rolegrid__role">
+                <input type="checkbox" name="{{ row.field }}" value="{{ name }}"
+                       aria-label="{{ name }}: {{ row.user.get_username }}"
+                       {% if has %}checked{% endif %}>
+              </td>
+            {% endfor %}
+            <td>
+              {% if row.user.is_superuser %}<span class="chip chip--dup">администратор</span>{% endif %}
+              {% if row.user.is_staff and not row.user.is_superuser %}<span class="chip">админка</span>{% endif %}
+              {% if not row.user.is_active %}<span class="chip chip--gone">отключён</span>{% endif %}
+            </td>
+            <td class="desc">{{ row.user.last_login|date:"d.m.Y H:i"|default:"не входил" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="toolbar">
+    <button class="btn btn--primary" type="submit">Сохранить роли</button>
+    <span class="muted">Администратор, доступ к админке и отключение учётной записи — в админке.</span>
+  </div>
+</form>
+{% endblock %}

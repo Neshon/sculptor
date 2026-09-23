@@ -73,7 +73,9 @@ class Loader:
         from .boards_bridge import sync_board
 
         base_pn, _, _ = parse_pn(part_number)
-        board = Board.objects.filter(base_pn__iexact=base_pn).first()
+        # тем же правилом, что импорт BOM и карточек, — иначе плата,
+        # записанная с точкой, здесь не нашлась бы
+        board = Board.objects.by_number(base_pn)
         if board is None:
             return self.item_for(part_number, Item.BOARD)
 

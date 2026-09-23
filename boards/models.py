@@ -4,8 +4,9 @@
 их нет в исходной схеме, поэтому managed здесь по умолчанию.
 """
 
-from django.db import models
-from django.db.models import Count
+from django.db import models, transaction
+from django.db.models import Count, Max, Value
+from django.db.models.functions import Replace, Upper
 from django.urls import reverse
 from django.utils import timezone
 
@@ -13,6 +14,7 @@ from components.matching import is_dash
 from components.refs import ComponentRefMixin
 
 from . import images
+from .pn import match_key
 from .references import normalize_references, split_references
 from .revisions import parse_pn, variant_of
 
@@ -91,8 +93,46 @@ class BomHeader:
         self.imported_at = when or timezone.now()
 
 
+def number_key(field):
+    """:func:`boards.pn.match_key` на стороне базы — для поиска запросом.
+
+    Те же три шага: без точек, без пробелов, в верхнем регистре. Раньше
+    плату по номеру искали тремя правилами: импорт BOM — точным
+    совпадением, импорт карточек и Confluence — без учёта регистра, формы
+    — через match_key. Файл с номером «hsbp-5s01» заводил вторую плату
+    рядом с «HSBP-5S01», а «HSBP-5S.01-01A» — вторую ревизию рядом с
+    «HSBP-5S01-01A»; для их слияния и появилась команда merge_boards.
+
+    Снимаются только пробелы, а не любые пробельные знаки, как в match_key:
+    табуляции и переводы строк в номер из поля ввода или ячейки Excel не
+    попадают — их срезает strip при разборе.
+    """
+    return Upper(Replace(Replace(field, Value("."), Value("")),
+                         Value(" "), Value("")))
+
+
 class BoardQuerySet(models.QuerySet):
     """Списку плат нужно число ревизий — считаем его одним запросом."""
+
+    def with_number(self, base_pn):
+        """Платы с этим номером — по правилу match_key, одному на проект.
+
+        Номер — базовый, без ревизии (см. revisions.parse_pn). Пустой номер
+        не совпадает ни с чем, а не со всеми платами без номера.
+        """
+        key = match_key(base_pn)
+        if not key:
+            return self.none()
+        return self.alias(number=number_key("base_pn")).filter(number=key)
+
+    def by_number(self, base_pn):
+        """Плата с этим номером или None.
+
+        Если в реестре уже есть задвоенные платы, берётся заведённая раньше:
+        у неё и ревизий, как правило, больше. Слить задвоенное — дело
+        merge_boards, а не поиска.
+        """
+        return self.with_number(base_pn).order_by("pk").first()
 
     def with_counts(self):
         """Число ревизий на каждую плату.
@@ -223,6 +263,38 @@ class Board(models.Model):
         """Делает ревизия текущим: его состав и шапку показывает плата."""
         self.current_revision = revision
         self.save(update_fields=["current_revision"])
+
+    def revision_by_number(self, oy_pn):
+        """Ревизия этой платы с таким номером или None — по правилу match_key.
+
+        Одну и ту же ревизию пишут и «HSBP-5S.01-01A», и «HSBP-5S01-01A»:
+        точное сравнение, как раньше в импорте BOM, заводило на второе
+        написание вторую ревизию — с тем же составом и чек-листами.
+        """
+        key = match_key(oy_pn)
+        if not key or self.pk is None:
+            return None
+        return (self.revisions.alias(key=number_key("oy_pn"))
+                .filter(key=key).order_by("number").first())
+
+    def next_revision_number(self):
+        """Номер для новой ревизии этой платы: следующий за наибольшим.
+
+        Строка платы блокируется до конца транзакции. Без этого две
+        загрузки BOM одновременно получали один и тот же номер, и вторая
+        падала на уникальности (board, number). Блокировка держится, только
+        если вызвали внутри transaction.atomic — все места, где заводят
+        ревизию, так и делают; вне транзакции блокировать нечем, и номер
+        считается как есть.
+        """
+        if self.pk is None:
+            return 1
+        if transaction.get_connection().in_atomic_block:
+            # сама строка не нужна — нужна блокировка на неё
+            list(Board.objects.select_for_update()
+                 .filter(pk=self.pk).values_list("pk", flat=True))
+        top = self.revisions.aggregate(top=Max("number"))["top"]
+        return (top or 0) + 1
 
     # Счётчики состава берутся у текущей ревизии: состав принадлежит ей.
     # В списке плат они не показываются, поэтому и не считаются пачкой —
@@ -462,6 +534,23 @@ class BoardRevision(BomHeader, models.Model):
     def unlinked_count(self):
         """Строки, которым не нашлось записи в библиотеке компонентов."""
         return self.items.filter(component_id__isnull=True).count()
+
+    def next_position(self, kind):
+        """Номер позиции для строки, у которой его не указали.
+
+        У замены он тот же, что у основной строки: замена не занимает своей
+        позиции в спецификации, она стоит под чужой. Поэтому ``S`` получает
+        последний номер, а ``M`` — следующий за ним.
+
+        Живёт в модели, а не в виде: строку правят и с сайта, и из админки,
+        и правило должно быть одно.
+        """
+        last = (self.items.exclude(position__isnull=True)
+                .order_by("-position").first())
+        if last is None:
+            return 1
+        return (last.position if kind == BoardItem.SUBSTITUTE
+                else last.position + 1)
 
 
 class BoardItem(ComponentRefMixin, models.Model):

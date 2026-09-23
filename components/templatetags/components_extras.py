@@ -46,6 +46,37 @@ def param_url(context, **params):
     return with_params(context["request"].GET, **params)
 
 
+def plural_form(number, one, few, many):
+    """Слово в нужной форме для числа: 1 запись, 3 записи, 11 записей.
+
+    По-русски форму решают две последние цифры: 11–14 всегда «много»,
+    остальное — по последней цифре.
+    """
+    number = abs(int(number))
+    if number % 100 in (11, 12, 13, 14):
+        return many
+    if number % 10 == 1:
+        return one
+    if number % 10 in (2, 3, 4):
+        return few
+    return many
+
+
+@register.filter
+def plural(number, forms):
+    """Число со словом в нужной форме: ``{{ n|plural:"запись,записи,записей" }}``.
+
+    Формы — через запятую: для 1, для 2–4 и для 5 и больше. Не число —
+    выводится как есть, с формой «много»: счётчик не должен ронять страницу.
+    """
+    one, few, many = forms.split(",")
+    try:
+        word = plural_form(number, one, few, many)
+    except (TypeError, ValueError):
+        word = many
+    return f"{number} {word}"
+
+
 @register.filter
 def cell(value):
     """Пустое значение показывается прочерком, ссылка — ссылкой."""

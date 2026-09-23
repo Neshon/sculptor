@@ -1,4 +1,5 @@
 {% extends "components/base.html" %}
+{% load components_extras %}
 
 {% block title %}Разузлование · {{ item.oy_pn }}{% endblock %}
 
@@ -7,7 +8,7 @@
   <div class="legend__eyebrow">разузлование</div>
   <div class="legend__row">
     <h1 class="dbname">{{ item.oy_pn }}</h1>
-    <span class="legend__count">{{ rows|length }} строк</span>
+    <span class="legend__count">{{ rows|length|plural:"строка,строки,строк" }}</span>
     <span class="legend__actions">
       <a class="btn" href="?export=csv">Выгрузить CSV</a>
       <a class="btn btn--ghost" href="{{ item.get_absolute_url }}">К карточке</a>

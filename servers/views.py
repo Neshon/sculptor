@@ -6,7 +6,7 @@ from django.db import DatabaseError, transaction
 from django.shortcuts import get_object_or_404, redirect, render
 
 from components.export import csv_response
-from components.permissions import board_editor
+from users.roles import board_editor
 
 from . import tree
 from .forms import BomLineForm, ItemForm, SystemBomUploadForm

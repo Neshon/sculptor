@@ -125,7 +125,9 @@ class BoardForm(PhotoFieldsMixin, forms.ModelForm):
                 "Укажите номер платы: по нему её опознают в системе")
 
         base_pn, _, _ = parse_pn(value)
-        existing = Board.objects.filter(base_pn__iexact=base_pn)
+        # то же правило, по которому плату находят импорты: иначе форма
+        # пропустила бы «HSBP-5S.01» рядом с заведённой «HSBP-5S01»
+        existing = Board.objects.with_number(base_pn)
         if self.instance.pk:
             existing = existing.exclude(pk=self.instance.pk)
         if existing.exists():
@@ -213,9 +215,7 @@ class BoardRevisionCreateForm(BoardRevisionForm):
                 raise forms.ValidationError(
                     f"Это ревизия платы {base_pn}, а не {self.board.base_pn}")
 
-            twin = [item for item in self.board.revisions.all()
-                    if match_key(item.oy_pn) == match_key(value)]
-            if twin:
+            if self.board.revision_by_number(value) is not None:
                 raise forms.ValidationError("Такая ревизия у платы уже есть")
         return value
 

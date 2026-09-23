@@ -32,9 +32,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from boards import checklists, images, md_card
-from boards.models import Board, BoardRevision
-from boards.pn import match_key
 from boards.revisions import parse_pn, variant_of
+from boards.storing import board_for, revision_for
 
 
 def title_key(title):
@@ -109,9 +108,9 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             base_pn, _, _ = parse_pn(number)
-            board = Board.objects.filter(base_pn__iexact=base_pn).first()
-            if board is None:
-                board = Board(base_pn=base_pn)
+            # плата ищется тем же правилом, что при загрузке BOM
+            board = board_for(base_pn)
+            if board.pk is None:
                 board.save()
                 self.stdout.write("   заведена плата без ревизий")
 
@@ -248,27 +247,22 @@ class Command(BaseCommand):
                if photos else "")))
 
     def revision_for(self, number):
-        """Ревизия по номеру; платы или ревизии нет — заводим."""
+        """Ревизия по номеру; платы или ревизии нет — заводим.
+
+        Плата и ревизия ищутся тем же правилом, что при загрузке BOM
+        (boards.storing): номер сравнивается без точек, пробелов и регистра.
+        Одну и ту же ревизию пишут и «HSBP-5S.01-01A», и «HSBP-5S01-01A», и
+        иначе на вторую страницу заводилась вторая ревизия — с тем же
+        составом и теми же чек-листами.
+        """
         base_pn, _, _ = parse_pn(number)
-        board = Board.objects.filter(base_pn__iexact=base_pn).first()
-        if board is None:
-            board = Board(base_pn=base_pn)
+        board = board_for(base_pn)
+        if board.pk is None:
             board.save()
             self.stdout.write(f"   заведена плата {board.base_pn}")
 
-        # Номер сравниваем без точек: одну и ту же ревизию пишут и
-        # «HSBP-5S.01-01A», и «HSBP-5S01-01A». Иначе на вторую страницу
-        # заводится второй ревизия — с тем же составом и теми же
-        # чек-листами
-        wanted = match_key(number)
-        revision = next(
-            (item for item in board.revisions.all()
-             if match_key(item.oy_pn) == wanted), None)
-        if revision is None:
-            last = board.revisions.order_by("-number").first()
-            revision = BoardRevision(board=board,
-                                     number=(last.number + 1) if last else 1)
-            revision.apply_pn(number)
+        revision = revision_for(board, number)
+        if revision.pk is None:
             # BOM у такой ревизии нет: она заведена по карточке Confluence,
             # чтобы страница не потерялась. Отметка о загрузке остаётся
             # пустой до первого файла

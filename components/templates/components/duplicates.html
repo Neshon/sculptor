@@ -9,7 +9,7 @@
   <div class="legend__row">
     <h1>Дубли</h1>
     {% if total %}
-      <span class="legend__count">{{ total }} групп · {{ records }} записей</span>
+      <span class="legend__count">{{ total|plural:"группа,группы,групп" }} · {{ records|plural:"запись,записи,записей" }}</span>
     {% endif %}
   </div>
 </div>
@@ -29,7 +29,7 @@
     <input class="field field--search" type="search" name="q" value="{{ term }}"
            placeholder="фильтр по значению" autocomplete="off">
     <button class="btn" type="submit">Найти</button>
-    {% if term %}<a class="btn btn--ghost" href="{% param_url q='' %}">Сбросить</a>{% endif %}
+    {% if term %}<a class="btn btn--reset" href="{% param_url q='' %}">Сбросить</a>{% endif %}
   </form>
 
   <div class="filterbar">

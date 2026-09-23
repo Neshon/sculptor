@@ -1,0 +1,24 @@
+{
+  // Сервер разработки для превью в Claude Desktop (вкладка Code).
+  //
+  // Путь к Python — полный, из venv: приложение виртуальное окружение не
+  // активирует, и просто «python» нашёл бы системный интерпретатор без
+  // Django и OCP. Если проект лежит в другом месте — поправьте путь.
+  //
+  // autoPort: false — не случайно. Занятый порт Claude меняет, передавая
+  // новый через переменную PORT, а runserver её не читает: превью смотрело
+  // бы в один порт, а сервер слушал другой.
+  //
+  // Секреты сюда не кладите — файл уходит в репозиторий. Настройки сервер
+  // и так берёт из .env в корне проекта (config/settings.py читает его сам).
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sculptor",
+      "runtimeExecutable": "C:/Users/yu-kovalenko/Desktop/web view/oy_product/venv/Scripts/python.exe",
+      "runtimeArgs": ["manage.py", "runserver", "8000"],
+      "port": 8000,
+      "autoPort": false
+    }
+  ]
+}

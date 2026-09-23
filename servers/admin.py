@@ -35,3 +35,6 @@ class BomLineAdmin(admin.ModelAdmin):
     list_filter = ("kind", "unit")
     search_fields = ("oy_pn", "gct_pn", "description", "parent__oy_pn")
     autocomplete_fields = ("parent", "child")
+    # parent — колонка списка, child читает label: без этого обе позиции
+    # спрашивались по запросу на строку (42 запроса на 37 строк)
+    list_select_related = ("parent", "child")

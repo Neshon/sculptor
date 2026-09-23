@@ -10,3 +10,12 @@ media/
 
 # STEP-модели в ожидании рендера: живут секунды, удаляются воркером
 step_queue/
+
+# синхронизация дизайн-системы с claude.ai/design (.design-sync/NOTES.md)
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+design-system/node_modules/
+design-system/dist/

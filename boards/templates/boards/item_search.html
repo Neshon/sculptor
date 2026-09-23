@@ -1,4 +1,5 @@
 {% extends "components/base.html" %}
+{% load components_extras %}
 
 {% block title %}Поиск по составам: {{ term }}{% endblock %}
 
@@ -7,7 +8,7 @@
   <div class="legend__eyebrow">составы плат</div>
   <div class="legend__row">
     <h1>{% if term %}<span class="mono">{{ term }}</span>{% else %}Что ищем?{% endif %}</h1>
-    <span class="legend__count">{{ page.paginator.count }} строк</span>
+    <span class="legend__count">{{ page.paginator.count|plural:"строка,строки,строк" }}</span>
   </div>
 </div>
 

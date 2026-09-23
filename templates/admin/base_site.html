@@ -3,14 +3,26 @@
 
 {% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
 
-{# Фирменная тема светлая, поэтому системную тёмную схему Django отключаем. #}
+{% comment %}
+  Тема — общая с сайтом. Свою тёмную схему Django (dark_mode.css и
+  theme.js) не подключаем: у неё свой переключатель и своё место в
+  localStorage, и в админке тема жила бы отдельно от сайта. Вместо неё —
+  тот же выбор темы, что на сайте (_theme_boot.html), и те же токены
+  (tokens.css): переключили тему на сайте — админка открывается в ней же.
+{% endcomment %}
 {% block dark-mode-vars %}{% endblock %}
+
+{% block extrahead %}
+  {{ block.super }}
+  {% include "_theme_boot.html" %}
+{% endblock %}
 
 {% block extrastyle %}
   {{ block.super }}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'components/tokens.css' %}">
   <link rel="stylesheet" href="{% static 'components/admin.css' %}">
 {% endblock %}
 
@@ -19,11 +31,26 @@
     <a href="{% url 'admin:index' %}">
       <img src="{% static 'components/logo-white.svg' %}" alt="OpenYard" class="brand-logo">
     </a>
-    <span class="subline">администрирование библиотеки</span>
+    <span class="subline">администрирование · Sculptor</span>
   </h1>
 {% endblock %}
 
 {% block userlinks %}
-  <a href="{% url 'components:dashboard' %}">К справочнику</a> /
   {{ block.super }}
+  <button type="button" class="oy-theme-toggle" id="oy-theme-toggle"
+          aria-label="Переключить тему" title="Светлая или тёмная тема">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.5"></circle>
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"></path>
+    </svg>
+  </button>
+  {# тот же ключ, что у переключателя на сайте (components/base.html) #}
+  <script>
+    document.getElementById("oy-theme-toggle").addEventListener("click", function () {
+      var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem("oy-theme", next); } catch (e) {}
+    });
+  </script>
 {% endblock %}

@@ -75,6 +75,24 @@ def fallback(value, what=""):
     return decorator
 
 
+def distinct_values(queryset, field, order=False):
+    """Разные значения колонки — ``SELECT DISTINCT field``.
+
+    Сортировка по умолчанию здесь снимается, и ради этого функция и есть.
+    Поля ``Meta.ordering`` Django добавляет в сам запрос, рядом с колонкой,
+    и ``distinct`` начинает различать строки по ним: сотрудник в журнале
+    повторялся по разу на каждую правку, позиция — на каждую строку
+    состава, а у таблиц компонентов (сортировка по -id) база отдавала все
+    строки таблицы. Раньше это правило жило в пяти местах, в каждом со
+    своим объяснением, и в шестом его легко было забыть.
+
+    ``order=True`` — отсортировать по самой колонке: она и так в запросе,
+    и лишних полей сортировка не добавит.
+    """
+    queryset = queryset.order_by(field) if order else queryset.order_by()
+    return queryset.values_list(field, flat=True).distinct()
+
+
 @contextmanager
 def unavailable(table, failed=None):
     """Пропустить недоступную таблицу и продолжить обход.

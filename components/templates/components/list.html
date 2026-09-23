@@ -10,9 +10,9 @@
     <h1 class="dbname">{{ category.table }}</h1>
     {% if category.replacement %}<span class="chip chip--replacement">замена</span>{% endif %}
     {% if category.read_only %}<span class="chip">только чтение</span>{% endif %}
-    <span class="legend__count">{{ paginator.count }} записей</span>
+    <span class="legend__count" id="list-count">{{ paginator.count|plural:"запись,записи,записей" }}</span>
     <span class="legend__actions">
-      <a class="btn" href="{{ export_url }}">Выгрузить CSV</a>
+      <a class="btn" id="list-export" href="{{ export_url }}">Выгрузить CSV</a>
       {% if can_edit_components and not category.read_only and not category.replacement %}
         <a class="btn btn--primary" href="{% url 'components:create' category.slug %}">Добавить компонент</a>
       {% endif %}
@@ -21,31 +21,74 @@
 </div>
 
 <div class="panel">
-  <form class="toolbar" method="get" id="list-filters">
+  {% comment %}
+    Фрагмент panel — то, что отдаётся на запрос HTMX
+    ("components/list.html#panel", см. component_list). inline — он же
+    выводится и в самой странице, так что вёрстка у них одна.
+
+    Обновляются фильтры вместе с таблицей, а не одна таблица: варианты в
+    каждом фильтре зависят от уже выбранных в остальных (фильтры сужают
+    друг друга), и без обновления в списках оставались бы варианты первой
+    загрузки страницы.
+
+    Отправку форма получает как раньше — кнопкой, Enter в поиске или
+    автоотправкой выпадающих фильтров, — HTMX лишь перехватывает её. Адрес
+    обновляется (hx-push-url), поэтому ссылка на отфильтрованный список и
+    кнопка «Назад» работают как без HTMX. hx-sync="this:replace": новый
+    запрос отменяет недошедший старый, и быстрая смена фильтров не покажет
+    результат предыдущего.
+
+    Страницы и заголовки колонок тоже ходят через HTMX (hx-boost), но
+    по-разному. Переход по страницам меняет только строки (#list-rows) и
+    номера страниц (#list-pager): ни в форме, ни в заголовках колонок он
+    ничего не меняет, и пересобирать их незачем — форма от этого «прыгала»,
+    а заголовки мигали. Ответ тот же фрагмент panel: строки из него берёт
+    hx-select, номера страниц — hx-select-oob. Сортировка обновляет панель
+    целиком: выбранная колонка хранится в скрытых полях формы, и без
+    обновления следующий выбор фильтра сбросил бы сортировку. Ссылки на
+    карточки в строках через HTMX не ходят: карточка открывается целой
+    страницей.
+
+    На время запроса приглушаются только строки (hx-indicator): гаснущие и
+    загорающиеся заголовки выглядели как мигание. Число записей и ссылка на выгрузку стоят в шапке, вне
+    фрагмента, и обновляются вместе с ним — hx-swap-oob подменяет их по id.
+  {% endcomment %}
+  {% partialdef panel inline %}
+  <div id="list-panel">
+  <form class="toolbar" method="get" id="list-filters" data-drop-empty
+        {% if htmx_enabled %}
+          hx-get="{% url 'components:list' category.slug %}"
+          hx-target="#list-panel" hx-swap="outerHTML"
+          hx-push-url="true" hx-sync="this:replace"
+          hx-indicator="#list-rows"
+        {% endif %}>
     {{ filter_form.q }}
     {% for field in filter_form %}
       {% if field.name != 'q' %}{{ field }}{% endif %}
     {% endfor %}
-    <input type="hidden" name="sort" value="{{ sort }}">
-    <input type="hidden" name="dir" value="{{ dir }}">
-    <button class="btn btn--primary" type="submit">Применить</button>
+    {# без выбранной сортировки направление ничего не значит — не шлём оба #}
+    {% if sort %}
+      <input type="hidden" name="sort" value="{{ sort }}">
+      <input type="hidden" name="dir" value="{{ dir }}">
+    {% endif %}
     {% if request.GET %}
-      <a class="btn btn--ghost" href="{% url 'components:list' category.slug %}">Сбросить</a>
+      <a class="btn btn--reset" href="{% url 'components:list' category.slug %}">Сбросить</a>
     {% endif %}
     {% include "_page_size.html" %}
   </form>
 
+  <div id="list-results">
   {% if rows %}
   <div class="table-wrap">
     <table class="grid grid--list">
-      <thead>
+      <thead{% if htmx_enabled %} hx-boost="true" hx-target="#list-panel" hx-swap="outerHTML" hx-indicator="#list-rows"{% endif %}>
         <tr>
           {% for name, label in columns %}
             <th><a href="{% sort_url name %}" data-state="{% sort_state name %}">{{ label }}</a></th>
           {% endfor %}
         </tr>
       </thead>
-      <tbody>
+      <tbody id="list-rows">
         {% for row in rows %}
           <tr data-href="{{ row.obj.get_absolute_url }}">
             {% for name, value in row.cells %}
@@ -63,7 +106,9 @@
     </table>
   </div>
 
-  {% include "_pagination.html" with only_pages=1 %}
+  <div id="list-pager"{% if htmx_enabled %} hx-boost="true" hx-target="#list-rows" hx-select="#list-rows" hx-select-oob="#list-pager" hx-swap="outerHTML" hx-indicator="#list-rows"{% endif %}>
+    {% include "_pagination.html" with only_pages=1 %}
+  </div>
 
   {% else %}
     <div class="empty">
@@ -78,5 +123,12 @@
       {% endif %}
     </div>
   {% endif %}
+  </div>
+  </div>
+  {% if htmx_request %}
+    <span class="legend__count" id="list-count" hx-swap-oob="true">{{ paginator.count|plural:"запись,записи,записей" }}</span>
+    <a class="btn" id="list-export" href="{{ export_url }}" hx-swap-oob="true">Выгрузить CSV</a>
+  {% endif %}
+  {% endpartialdef %}
 </div>
 {% endblock %}

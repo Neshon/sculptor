@@ -149,8 +149,7 @@ class Command(BaseCommand):
                     # номера ревизий у плат свои и почти наверняка
                     # совпадают — продолжаем нумерацию основной платы,
                     # иначе упрёмся в ограничение уникальности
-                    last = keeper.revisions.order_by("-number").first()
-                    number = (last.number + 1) if last else 1
+                    number = keeper.next_revision_number()
                     for revision in board.revisions.order_by("number"):
                         revision.board = keeper
                         revision.number = number

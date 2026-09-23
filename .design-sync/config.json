@@ -1,0 +1,15 @@
+{
+  "projectId": "b349110c-d972-439e-ac10-df7dfaa350ab",
+  "pkg": "sculptor-ui",
+  "globalName": "SculptorUI",
+  "shape": "package",
+  "buildCmd": "npm --prefix design-system run build",
+  "runtimeFontPrefixes": ["Verdana", "Geneva"],
+  "readmeHeader": ".design-sync/conventions.md",
+  "overrides": {
+    "DataTable": {"cardMode": "column"},
+    "Columns": {"cardMode": "single", "viewport": "1280x620"},
+    "AppShell": {"cardMode": "single", "viewport": "1280x720"},
+    "FormGrid": {"viewport": "1280x900"}
+  }
+}

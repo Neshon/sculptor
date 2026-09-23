@@ -15,8 +15,9 @@
 from datetime import date
 
 from django.contrib.auth import get_user_model
-from .db import fallback
+from .db import distinct_values, fallback
 from .models import ComponentChange
+from .querystring import values_of
 
 # Что в историю не пишем: суррогатный ключ пользователю ничего не говорит,
 # а «Created» проставляется автоматически при заведении и потом не меняется.
@@ -133,6 +134,36 @@ def record_duplicate(instance, table, user, matches, source=SITE):
                  changes)
 
 
+def image_changes(footprint, old="", new=""):
+    """Что записать о картинке: одно «поле» — имя STEP-файла до и после.
+
+    Формат тот же, что у правки полей, — запись журнала показывает его
+    обычной таблицей «было — стало», без отдельной разметки. Удаление —
+    это «после» пустое, первая загрузка — пустое «до».
+
+    Посадочное место стоит в подписи: картинка общая для всех компонентов
+    с ним, и по записи должно быть видно, что поменялось не только здесь.
+    """
+    return [{"field": "image",
+             "label": f"Изображение посадочного места {footprint}",
+             "old": old or "", "new": new or ""}]
+
+
+def record_image(table, component_id, author, footprint, old="", new="",
+                 source=SITE):
+    """Записывает загрузку, замену или удаление картинки посадочного места.
+
+    Ставится тому компоненту, из карточки которого действовали: журнал
+    ведётся по компонентам, а у картинки своего нет. ``author`` —
+    пользователь или уже логин строкой: рендер идёт в фоне, и к моменту
+    записи запроса с пользователем давно нет, есть только логин в заявке.
+    """
+    if not table or component_id is None:
+        return None
+    return _save(table, component_id, author, ComponentChange.IMAGE, source,
+                 image_changes(footprint, old, new))
+
+
 @fallback(None, "запись в журнал изменений")
 def _save(table, component_id, user, action, source, changes):
     """Общая запись в журнал. Ошибка базы гасится — см. record()."""
@@ -143,6 +174,9 @@ def _save(table, component_id, user, action, source, changes):
 
 
 def _username(user):
+    # логин строкой — у записей из фона, где пользователя-объекта уже нет
+    if isinstance(user, str):
+        return user
     if user is None or not getattr(user, "is_authenticated", False):
         return ""
     return user.get_username()
@@ -194,22 +228,32 @@ def log_queryset(filters):
     со временем станет больше, чем во всей библиотеке — правок у компонента
     много, а компонент один.
 
-    ``filters`` — обычный словарь из строки запроса; неизвестные и пустые
-    значения игнорируются, поэтому чужой параметр в адресе ничего не ломает.
+    ``filters`` — строка запроса (``QueryDict``) или обычный словарь;
+    неизвестные и пустые значения игнорируются, поэтому чужой параметр в
+    адресе ничего не ломает.
+
+    Событие, сотрудник и таблица принимают по нескольку значений, как
+    фильтры над списком компонентов: ``?action=created|deleted`` — это
+    «добавлен или удалён». Разные фильтры между собой по-прежнему по «и».
     """
     found = ComponentChange.objects.all()
 
-    action = (filters.get("action") or "").strip()
-    if action in dict(ComponentChange.ACTIONS):
-        found = found.filter(action=action)
+    # неизвестное событие отбрасывается, а не превращается в пустой ответ:
+    # ссылку с событием, которое потом переименуют, лучше показать шире,
+    # чем пустой
+    known = dict(ComponentChange.ACTIONS)
+    actions = [value for value in values_of(filters, "action")
+               if value in known]
+    if actions:
+        found = found.filter(action__in=actions)
 
-    table = (filters.get("table") or "").strip()
-    if table:
-        found = found.filter(component_table=table)
+    tables = values_of(filters, "table")
+    if tables:
+        found = found.filter(component_table__in=tables)
 
-    author = (filters.get("author") or "").strip()
-    if author:
-        found = found.filter(author=author)
+    authors = values_of(filters, "author")
+    if authors:
+        found = found.filter(author__in=authors)
 
     since = _date(filters.get("since"))
     if since:
@@ -237,21 +281,12 @@ def _date(value):
 def author_logins():
     """Логины, встречающиеся в журнале, по одному разу.
 
-    ``order_by()`` здесь обязателен, и это не косметика. У журнала есть
-    сортировка по умолчанию (``ordering = ("-created", "-id")``), и Django
-    добавляет поля сортировки в сам запрос — рядом с автором. Тогда
-    ``distinct`` считает различными строки, где автор один, а время правки
-    разное, и сотрудник попадает в список столько раз, сколько правок
-    сделал. Сброс сортировки оставляет в запросе один столбец, и повторы
-    убирает уже база.
-
-    Порядок здесь не нужен: вызывающий сортирует логины сам.
+    Через ``distinct_values``: у журнала есть сортировка по умолчанию, и без
+    её сброса сотрудник попадал в список столько раз, сколько правок
+    сделал. Порядок здесь не нужен: вызывающий сортирует логины сам.
     """
-    return (ComponentChange.objects
-            .exclude(author="")
-            .order_by()
-            .values_list("author", flat=True)
-            .distinct())
+    return distinct_values(ComponentChange.objects.exclude(author=""),
+                           "author")
 
 
 @fallback(list, "список авторов журнала")

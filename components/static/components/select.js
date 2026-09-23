@@ -2,7 +2,7 @@
  *
  * Оформить список вариантов у родного <select> браузер не даёт: внутри
  * системного меню не работают ни шрифт, ни цвета, ни поиск. А вариантов у
- * фильтров бывает под три сотни (см. listing.MAX_FILTER_CHOICES), и найти
+ * фильтров бывает под пятьсот (см. listing.MAX_FILTER_CHOICES), и найти
  * среди них нужный прокруткой почти невозможно.
  *
  * Поэтому список рисуется сам, а родной <select> остаётся в форме и
@@ -18,6 +18,15 @@
  * Список с multiple — это фильтры над таблицей. Там варианты отмечаются
  * галочками, и каждая галочка применяется сразу: список внизу и остальные
  * фильтры должны показывать отобранное, а не то, что было до щелчка.
+ *
+ * С HTMX применение галочки заменяет форму фильтров целиком (фильтры
+ * сужают друг друга, и обновлять их нужно вместе с таблицей). Меню при
+ * этом лежит в body, а его кнопка уходит со страницы вместе со старой
+ * формой. Поэтому перед заменой (beforeSwap) запоминается, какой список
+ * был открыт, а после неё тот же список в новой форме открывается снова —
+ * с той же прокруткой и тем же поиском. Человек отмечает значения подряд,
+ * не замечая, что форма под меню сменилась. Меню ушедших списков
+ * убираются (sweep), иначе копились бы в body при каждой смене фильтра.
  *
  * Значения одного фильтра уходят в строку запроса одним параметром через
  * вертикальную черту (`?vendor=TDK|Murata`) — так ссылку проще прочитать и
@@ -39,6 +48,8 @@
 
   var counter = 0;
   var open = null;   // открытый список; одновременно он всегда один
+  var boxes = [];    // все собранные списки — чтобы убирать меню ушедших
+  var reopen = null; // какой список открыть снова после замены формы
 
   function text(node) {
     return (node.textContent || "").trim();
@@ -190,6 +201,9 @@
   }
 
   function place(box) {
+    // Кнопки на странице уже нет — её унесла замена формы. Координаты у
+    // неё нулевые, и меню улетело бы в левый верхний угол
+    if (!box.trigger.isConnected) { closeMenu(); return; }
     var rect = box.trigger.getBoundingClientRect();
     var menu = box.menu;
     menu.style.minWidth = Math.max(rect.width, MIN_MENU) + "px";
@@ -287,7 +301,8 @@
 
     if (box.many) {
       // отметку и ставим, и снимаем; меню при этом не закрывается, но
-      // отбор применяется сразу — страница перезагрузится с новым набором
+      // отбор применяется сразу. Без HTMX страница перезагрузится с новым
+      // набором, с HTMX — сменится форма, и меню откроется снова в новой
       var option = box.select.options[box.items.indexOf(item)];
       option.selected = !option.selected;
       show(box);
@@ -364,38 +379,123 @@
 
   function pack(form) {
     // Значения одного фильтра — одним параметром через `|`. Само поле из
-    // отправки убираем, иначе те же значения уйдут ещё и по одному
-    form.querySelectorAll("select[multiple][name]").forEach(function (select) {
-      var picked = Array.prototype.filter.call(select.options, function (o) {
-        return o.selected;
-      }).map(function (option) { return option.value; });
-
-      var carrier = document.createElement("input");
-      carrier.type = "hidden";
-      carrier.name = select.name;
-      carrier.value = picked.join(SEPARATOR);
-      select.removeAttribute("name");
-      if (picked.length) { form.appendChild(carrier); }
+    // отправки убираем, иначе те же значения уйдут ещё и по одному.
+    //
+    // Склейка должна повторяться на одной и той же форме. Пока форма
+    // уходила обычным переходом, страница после отправки собиралась
+    // заново, и хватало одного раза. С HTMX страница остаётся: у списка
+    // уже нет имени, а скрытое поле с прошлым выбором лежит в форме — и
+    // каждая следующая отправка уходила бы с ним. Поэтому имя списка
+    // запоминается при первой склейке, а поля прошлой отправки убираются
+    form.querySelectorAll("input[data-pack-carrier]").forEach(function (old) {
+      old.remove();
     });
+
+    form.querySelectorAll("select[multiple][name], select[multiple][data-pack-name]")
+      .forEach(function (select) {
+        var name = select.dataset.packName || select.name;
+        select.dataset.packName = name;
+        select.removeAttribute("name");
+
+        var picked = Array.prototype.filter.call(select.options, function (o) {
+          return o.selected;
+        }).map(function (option) { return option.value; });
+        if (!picked.length) { return; }
+
+        var carrier = document.createElement("input");
+        carrier.type = "hidden";
+        carrier.name = name;
+        carrier.value = picked.join(SEPARATOR);
+        carrier.dataset.packCarrier = "1";
+        form.appendChild(carrier);
+      });
   }
 
   function enhance(select) {
     if (select.size > 1 || select.dataset.pick) { return; }
     select.dataset.pick = "1";
 
-    var form = select.form;
-    if (select.multiple && form && !form.dataset.pickPacked) {
-      form.dataset.pickPacked = "1";
-      form.addEventListener("submit", function (event) { pack(event.target); });
-    }
+    // форму только помечаем: склейку делает общий обработчик ниже
+    if (select.multiple && select.form) { select.form.dataset.pickPacked = "1"; }
 
     var box = build(select);
+    boxes.push(box);
     if (!select.disabled) { wire(box); } else { show(box); }
   }
 
-  function start() {
-    document.querySelectorAll("select.field").forEach(enhance);
+  // Чем опознать тот же список в новой форме. id Django ставит по имени
+  // поля и не меняет; имя у списка с галочками склейка уже могла убрать
+  function key(select) {
+    return select.id || select.dataset.packName || select.name || "";
   }
+
+  // Меню списков, ушедших со страницы вместе с заменённой формой
+  function sweep() {
+    boxes = boxes.filter(function (box) {
+      if (box.pick.isConnected) { return true; }
+      if (open === box) { open = null; }
+      box.menu.remove();
+      return false;
+    });
+  }
+
+  // HTMX сейчас заменит target (htmx-setup.js). Если открытый список внутри —
+  // запомнить его и закрыть, пока его кнопка ещё на странице
+  function beforeSwap(target) {
+    if (!open || !target || !target.contains(open.pick)) { return; }
+    reopen = {
+      key: key(open.select),
+      scroll: open.list.scrollTop,
+      find: open.find ? open.find.value : ""
+    };
+    closeMenu(false);
+  }
+
+  // Открыть снова тот же список — но только из пришедшего куска. Вместе с
+  // формой HTMX подменяет и мелочи в шапке (число записей), и они могут
+  // прийти первыми: открыть список тогда значило бы открыть его в старой
+  // форме, которая сейчас уйдёт
+  function restore(root) {
+    if (!reopen || !reopen.key) { return; }
+    var box = boxes.filter(function (each) {
+      return key(each.select) === reopen.key && !each.select.disabled
+        && (root === document || root.contains(each.pick));
+    })[0];
+    if (!box) { return; }
+    var wanted = reopen;
+    reopen = null;
+    openMenu(box);
+    if (box.find && wanted.find) {
+      box.find.value = wanted.find;
+      filter(box);
+    }
+    box.list.scrollTop = wanted.scroll;
+  }
+
+  // Внутри root — страница целиком или вставленный кусок (htmx-setup.js).
+  // enhance повторную обработку отсекает сам, по data-pick
+  function start(root) {
+    root = root && root.querySelectorAll ? root : document;
+    if (root.matches && root.matches("select.field")) { enhance(root); }
+    root.querySelectorAll("select.field").forEach(enhance);
+    sweep();
+    restore(root);
+  }
+
+  // Склейка — на document и в фазе перехвата, а не на самой форме. HTMX
+  // вешает свой обработчик отправки на форму раньше, чем сюда доходит
+  // оформление списков, и собирает значения в нём же. Обработчик на форме
+  // срабатывал вторым — запрос уже ушёл с повторяющимися параметрами
+  // (?vendor=TDK&vendor=Murata), а склейка доставалась только следующему.
+  // Перехват на document срабатывает раньше любого обработчика формы.
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (form.dataset && form.dataset.pickPacked) { pack(form); }
+  }, true);
+
+  window.OY = window.OY || {};
+  window.OY.selects = start;
+  window.OY.selectsBeforeSwap = beforeSwap;
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start);

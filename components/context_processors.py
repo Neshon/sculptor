@@ -1,7 +1,10 @@
 """Навигация доступна всем шаблонам без ручной передачи в контекст."""
 
-from .permissions import (can_edit_boards, can_edit_components,
-                          can_open_admin, is_admin)
+from django.conf import settings
+
+from config import __version__
+
+from users.roles import can_edit_boards, can_edit_components, is_admin
 from .registry import MAIN_CATEGORIES, REPLACEMENT_CATEGORIES
 
 
@@ -21,5 +24,20 @@ def permissions(request):
         "can_edit_components": can_edit_components(user),
         "can_edit_boards": can_edit_boards(user),
         "is_admin": is_admin(user),
-        "can_open_admin": can_open_admin(user),
     }
+
+
+def htmx(request):
+    """Включён ли HTMX и пришёл ли запрос за фрагментом.
+
+    ``htmx_enabled`` — файл htmx на месте (config/settings.py). Шаблоны
+    ставят атрибуты hx-* только тогда: без библиотеки они ничего не делают,
+    зато страница честно работает обычными переходами.
+    """
+    return {"htmx_enabled": settings.HTMX_ENABLED,
+            "htmx_request": getattr(request, "htmx", False)}
+
+
+def version(request):
+    """Версия системы — для шапки. Одна на весь проект: config/__init__.py."""
+    return {"app_version": __version__}

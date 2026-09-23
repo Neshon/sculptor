@@ -14,29 +14,52 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'components/tokens.css' %}">
 <link rel="stylesheet" href="{% static 'components/app.css' %}">
 <!-- Выпадающие списки. defer: скрипт только дополняет разметку, и до
      разбора страницы ему делать нечего. Без него на странице остаются
      обычные <select> — они и хранят значение. -->
 <script src="{% static 'components/select.js' %}" defer></script>
+<script src="{% static 'components/date.js' %}" defer></script>
 <script src="{% static 'components/file.js' %}" defer></script>
 <script src="{% static 'components/lightbox.js' %}" defer></script>
 <script src="{% static 'components/tabs.js' %}" defer></script>
+{% comment %}
+  HTMX — после остальных скриптов. Склейка значений множественного фильтра
+  от порядка уже не зависит: она перехватывает отправку на document, раньше
+  обработчика HTMX на форме (select.js). И только если файл на месте
+  (config/settings.py, HTMX_ENABLED): без него сайт работает обычными
+  переходами.
+{% endcomment %}
+{% if htmx_enabled %}
+  {% comment %}
+    Снимки страниц для «Назад» выключены: HTMX вернул бы сохранённую
+    разметку, в которой выпадающие списки уже помечены как оформленные, —
+    select.js их пропускает, и фильтры перестают открываться, а на кнопках
+    остаются подписи из более позднего выбора. Без снимка «Назад»
+    загружает страницу с сервера целиком, как обычный переход.
+  {% endcomment %}
+  <meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": true}'>
+  <script src="{% static 'components/htmx.min.js' %}" defer></script>
+  <script src="{% static 'components/htmx-setup.js' %}" defer></script>
+{% endif %}
 </head>
-<body>
+{# токен CSRF для запросов HTMX не из форм — у форм он свой #}
+<body{% if htmx_enabled %} hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'{% endif %}>
 
 <header class="topbar">
   <div class="topbar__side">
     <a class="topbar__logo" href="{% url 'components:dashboard' %}">
       <img src="{% static 'components/logo-white.svg' %}" alt="OpenYard">
     </a>
-    <span class="topbar__section">Библиотека компонентов</span>
+    <span class="topbar__version" title="Версия Sculptor — что в ней нового, см. CHANGELOG.md">v{{ app_version }}</span>
   </div>
 
   <form class="topbar__search" action="{% url 'components:search' %}" method="get" role="search">
     <input type="search" name="q" id="global-search" value="{{ request.GET.q|default:'' }}"
-           placeholder="Поиск по всем группам: PN, описание, производитель"
-           aria-label="Поиск по всем группам" autocomplete="off">
+           placeholder="Глобальный поиск"
+           title="По всем группам компонентов: PN, описание, производитель"
+           aria-label="Глобальный поиск" autocomplete="off">
     <span class="topbar__hint" aria-hidden="true"><kbd>Ctrl</kbd><kbd>K</kbd></span>
   </form>
 
@@ -50,10 +73,7 @@
       </svg>
     </button>
     {% if user.is_authenticated %}
-      <span><strong>{{ user.get_username }}</strong></span>
-      {% if can_open_admin %}
-        <a href="{% url 'admin:index' %}">админка</a>
-      {% endif %}
+      <a href="{% url 'users:profile' %}" title="Профиль: роли, права, мои правки"><strong>{{ user.get_username }}</strong></a>
       <form action="{% url 'logout' %}" method="post">
         {% csrf_token %}
         <button type="submit" class="topbar__logout">выйти</button>
@@ -66,50 +86,58 @@
 
 <div class="shell">
   <nav class="rail">
-    <div class="rail__title">Серверы</div>
-    {# в пунктах только имя раздела: пояснение осталось в подсказке #}
-    <a class="rail__link {% if request.resolver_match.app_name == 'servers' %}is-active{% endif %}"
-       href="{% url 'servers:list' %}" title="Серверы, их конфигурации и состав">
-      <span>SERVERS</span>
-    </a>
-    <a class="rail__link {% if request.resolver_match.app_name == 'boards' %}is-active{% endif %}"
-       href="{% url 'boards:list' %}" title="Платы">
-      <span>BOARDS</span>
-    </a>
-    {% if is_admin %}
-      <a class="rail__link {% if request.resolver_match.url_name == 'duplicates' %}is-active{% endif %}"
-         href="{% url 'components:duplicates' %}" title="Дубли">
-        <span>DUPLICATES</span>
+    <div class="rail__scroll">
+      <div class="rail__title">Серверы</div>
+      {# в пунктах только имя раздела: пояснение осталось в подсказке #}
+      <a class="rail__link {% if request.resolver_match.app_name == 'servers' %}is-active{% endif %}"
+         href="{% url 'servers:list' %}" title="Серверы, их конфигурации и состав">
+        <span>SERVERS</span>
       </a>
-    {% endif %}
-    {% if can_edit_components %}
-      <a class="rail__link {% if request.resolver_match.url_name == 'link-import' %}is-active{% endif %}"
-         href="{% url 'components:link-import' %}" title="Импорт ссылок">
-        <span>LINKS</span>
+      <a class="rail__link {% if request.resolver_match.app_name == 'boards' %}is-active{% endif %}"
+         href="{% url 'boards:list' %}" title="Платы">
+        <span>BOARDS</span>
       </a>
-    {% endif %}
-    <a class="rail__link {% if request.resolver_match.url_name == 'changes' %}is-active{% endif %}"
-       href="{% url 'components:changes' %}" title="Журнал изменений">
-      <span>CHANGES</span>
-    </a>
-    <div class="rail__divider"></div>
+      {% if is_admin %}
+        <a class="rail__link {% if request.resolver_match.url_name == 'duplicates' %}is-active{% endif %}"
+           href="{% url 'components:duplicates' %}" title="Дубли">
+          <span>DUPLICATES</span>
+        </a>
+      {% endif %}
+      {% if can_edit_components %}
+        <a class="rail__link {% if request.resolver_match.url_name == 'link-import' %}is-active{% endif %}"
+           href="{% url 'components:link-import' %}" title="Импорт ссылок">
+          <span>LINKS</span>
+        </a>
+      {% endif %}
+      <a class="rail__link {% if request.resolver_match.url_name == 'changes' %}is-active{% endif %}"
+         href="{% url 'components:changes' %}" title="Журнал изменений">
+        <span>CHANGES</span>
+      </a>
+      {% if is_admin %}
+        <a class="rail__link {% if request.resolver_match.app_name == 'users' and request.resolver_match.url_name != 'profile' %}is-active{% endif %}"
+           href="{% url 'users:roles' %}" title="Сотрудники, роли и журнал доступа">
+          <span>USERS</span>
+        </a>
+      {% endif %}
+      <div class="rail__divider"></div>
 
-    <div class="rail__title">Группы компонентов</div>
-    {% for c in nav_categories %}
-      {# только имя таблицы: русское название осталось в подсказке #}
-      <a class="rail__link {% if category and category.slug == c.slug %}is-active{% endif %}"
-         href="{% url 'components:list' c.slug %}" title="{{ c.title }}">
-        <span>{{ c.table }}</span>
-      </a>
-    {% endfor %}
-    <div class="rail__divider"></div>
-    <div class="rail__title">Замены</div>
-    {% for c in nav_replacements %}
-      <a class="rail__link {% if category and category.slug == c.slug %}is-active{% endif %}"
-         href="{% url 'components:list' c.slug %}" title="{{ c.title }}">
-        <span>{{ c.table }}</span>
-      </a>
-    {% endfor %}
+      <div class="rail__title">Группы компонентов</div>
+      {% for c in nav_categories %}
+        {# только имя таблицы: русское название осталось в подсказке #}
+        <a class="rail__link {% if category and category.slug == c.slug %}is-active{% endif %}"
+           href="{% url 'components:list' c.slug %}" title="{{ c.title }}">
+          <span>{{ c.table }}</span>
+        </a>
+      {% endfor %}
+      <div class="rail__divider"></div>
+      <div class="rail__title">Замены</div>
+      {% for c in nav_replacements %}
+        <a class="rail__link {% if category and category.slug == c.slug %}is-active{% endif %}"
+           href="{% url 'components:list' c.slug %}" title="{{ c.title }}">
+          <span>{{ c.table }}</span>
+        </a>
+      {% endfor %}
+    </div>
   </nav>
 
   <main class="main">
@@ -134,6 +162,42 @@
     // отправки, а на нём висит склейка значений фильтра в один параметр
     if (el.form.requestSubmit) { el.form.requestSubmit(); }
     else { el.form.submit(); }
+  });
+
+  // Пустые поля формы с data-drop-empty в адрес не попадают: «q=&sort=»
+  // только удлиняет ссылку, которую пересылают. Имя снимается на время
+  // отправки и возвращается сразу после — и браузер, и HTMX собирают
+  // значения синхронно, в самом событии. Не disabled: он выбил бы курсор
+  // из поля поиска, пока человек печатает. Перехват на document — чтобы
+  // успеть раньше обработчика HTMX на самой форме
+  document.addEventListener('submit', function (event) {
+    const form = event.target;
+    if (!form.matches('form[data-drop-empty]')) { return; }
+    const dropped = [];
+    form.querySelectorAll('input[name]:not([type=checkbox]):not([type=radio]), select[name]:not([multiple])')
+      .forEach(function (el) {
+        if (el.value !== '') { return; }
+        dropped.push([el, el.name]);
+        el.removeAttribute('name');
+      });
+    setTimeout(function () {
+      dropped.forEach(function (pair) { pair[0].name = pair[1]; });
+    });
+  }, true);
+
+  // Поиск в фильтрах применяется по мере ввода — после паузы, чтобы не
+  // слать запрос на каждую букву. Только с HTMX: без него каждая пауза
+  // перезагружала бы страницу и выбивала курсор из поля. Через
+  // requestSubmit, как и выпадающие фильтры: на событии отправки висит
+  // склейка значений множественных фильтров
+  let typingTimer = null;
+  document.addEventListener('input', function (event) {
+    const el = event.target;
+    if (!window.htmx || !el.matches('[data-autosubmit-typing]') || !el.form) { return; }
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(function () {
+      if (el.form.requestSubmit) { el.form.requestSubmit(); }
+    }, 400);
   });
 
   // карточка открывается кликом по любому месту строки

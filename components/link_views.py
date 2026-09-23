@@ -5,15 +5,40 @@
 компонентов, рядом с которой он раньше лежал.
 """
 
+from django import forms
 from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 
-from .forms import LinkImportForm
+from users.roles import component_editor
+
 from .links import LinkFileError, read_rows, resolve_rows, save_links
 from .matching import usable
-from .permissions import component_editor
 from .refs import resolve
+
+
+class LinkImportForm(forms.Form):
+    """Загрузка CSV со ссылками на компоненты.
+
+    По умолчанию идёт пробный проход: сначала смотрим, что нашлось и что
+    нет, и только потом записываем. Файл придётся выбрать второй раз —
+    зато между показом и записью ничего не хранится на сервере, и то, что
+    вы увидели, посчитано ровно по тому файлу, который отправляете.
+    """
+
+    file = forms.FileField(
+        label="Файл CSV",
+        help_text="Две колонки: «Ключ» — ссылка, «Задача» — название "
+                  "с артикулом в конце")
+    dry_run = forms.BooleanField(
+        required=False, initial=True, label="Только проверить, не записывать")
+
+    def clean_file(self):
+        uploaded = self.cleaned_data["file"]
+        if not uploaded.name.lower().endswith(".csv"):
+            raise forms.ValidationError(
+                f"Нужен файл .csv, а выбран {uploaded.name}")
+        return uploaded
 
 
 @component_editor

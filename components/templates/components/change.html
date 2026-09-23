@@ -42,7 +42,7 @@
   {# у дубля в changes не поля, а записи, с которыми совпало #}
   <div class="panel">
     <div class="section__head">
-      совпадает с {% if change.changes %} · {{ change.changes|length }}{% endif %}
+      совпадает с {% if matches %} · {{ matches|length }}{% endif %}
     </div>
     <p class="muted" style="padding:0 var(--s-4)">
       Компонент завели, когда в библиотеке уже были похожие записи. Форма
@@ -58,10 +58,16 @@
           </tr>
         </thead>
         <tbody>
-          {% for item in change.changes %}
+          {% for item in matches %}
             <tr>
               <td class="pn">{{ item.title|default:"—" }}</td>
-              <td class="pn">{{ item.table }} #{{ item.id }}</td>
+              <td class="pn">
+                {% if item.url %}
+                  <a href="{{ item.url }}">{{ item.table }} #{{ item.id }}</a>
+                {% else %}
+                  {{ item.table }} #{{ item.id }} <span class="muted">· удалена</span>
+                {% endif %}
+              </td>
               <td class="desc">{{ item.reason|default:"артикул" }}</td>
             </tr>
           {% endfor %}

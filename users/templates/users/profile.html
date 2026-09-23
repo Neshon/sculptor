@@ -1,0 +1,128 @@
+{% extends "components/base.html" %}
+{% load components_extras %}
+
+{% block title %}Профиль · {{ profile.get_username }}{% endblock %}
+
+{% block content %}
+<div class="legend">
+  <div class="legend__eyebrow">профиль</div>
+  <div class="legend__row">
+    <h1>{{ profile.get_full_name|default:profile.get_username }}</h1>
+    {% if profile.is_superuser %}<span class="chip chip--dup">администратор</span>{% endif %}
+    {% for role in roles %}
+      {% if role.has %}<span class="chip chip--table">{{ role.name }}</span>{% endif %}
+    {% endfor %}
+    {% if is_admin %}
+      <span class="legend__actions">
+        <a class="btn" href="{% url 'users:roles' %}">Сотрудники и роли</a>
+        <a class="btn" href="{% url 'users:access-log' %}">Журнал доступа</a>
+      </span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="cols">
+  <div class="stack">
+    <div class="panel">
+      <div class="section__head">сотрудник</div>
+      <dl class="specs">
+        <div><dt>Логин</dt><dd class="mono">{{ profile.get_username }}</dd></div>
+        <div><dt>Имя</dt><dd>{{ profile.get_full_name|default:"—" }}</dd></div>
+        <div><dt>Отдел</dt><dd>{{ profile.department|default:"—" }}</dd></div>
+        <div><dt>Должность</dt><dd>{{ profile.position|default:"—" }}</dd></div>
+        <div><dt>Почта</dt><dd>{{ profile.email|default:"—" }}</dd></div>
+        <div><dt>Последний вход</dt><dd>{{ profile.last_login|date:"d.m.Y H:i"|default:"—" }}</dd></div>
+        <div><dt>Учётная запись с</dt><dd>{{ profile.date_joined|date:"d.m.Y" }}</dd></div>
+      </dl>
+      {% comment %}
+        Сведения о сотруднике правит администратор: отдел и должность
+        попадают в журналы и фильтры, и вписывать их каждый будет по-своему.
+      {% endcomment %}
+      <p class="muted" style="margin: var(--s-3) var(--s-4)">
+        Изменить сведения о себе может администратор.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="section__head">роли и права</div>
+      <dl class="specs">
+        {% for role in roles %}
+          <div>
+            <dt>{{ role.name }}</dt>
+            <dd>
+              {% if role.has %}<span class="chip chip--added">есть</span>{% else %}<span class="chip">нет</span>{% endif %}
+              <span class="muted">{{ role.description }}</span>
+            </dd>
+          </div>
+        {% endfor %}
+      </dl>
+      <div class="section__head">что вам доступно</div>
+      <dl class="specs specs--tight">
+        {% for row in abilities %}
+          <div>
+            <dt>{{ row.label }}</dt>
+            <dd>{% if row.allowed %}<span class="chip chip--added">да</span>{% else %}<span class="chip">нет</span>{% endif %}</dd>
+          </div>
+        {% endfor %}
+      </dl>
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="panel">
+      <div class="section__head">
+        мои правки в справочнике
+        <span class="toolbar__spacer"></span>
+        {% if changes_total %}
+          <a href="{{ changes_url }}">все {{ changes_total|plural:"запись,записи,записей" }}</a>
+        {% endif %}
+      </div>
+      {% if changes %}
+        <div class="table-wrap table-wrap--flow">
+          <table class="grid">
+            <tbody>
+              {% for change in changes %}
+                <tr data-href="{% url 'components:change' change.pk %}">
+                  <td><span class="chip chip--event {{ change.chip_class }}">{{ change.short_action }}</span></td>
+                  <td class="desc">
+                    <a class="rowlink" href="{% url 'components:change' change.pk %}">
+                      {{ change.created|date:"d.m.Y H:i" }}</a>
+                  </td>
+                  <td class="pn">{{ change.component_table }} #{{ change.component_id }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty"><p>Правок в справочнике пока нет.</p></div>
+      {% endif %}
+    </div>
+
+    <div class="panel">
+      <div class="section__head">последние входы</div>
+      {% if events %}
+        <div class="table-wrap table-wrap--flow">
+          <table class="grid">
+            <tbody>
+              {% for event in events %}
+                <tr>
+                  <td><span class="chip chip--event {{ event.chip_class }}">{{ event.get_kind_display|lower }}</span></td>
+                  <td class="desc">{{ event.created|date:"d.m.Y H:i" }}</td>
+                  <td class="pn">{{ event.ip|default:"—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% comment %}
+          Неудачные попытки под своим логином сотрудник видит сам: если
+          входил не он, узнать это раньше администратора — лучший случай.
+        {% endcomment %}
+      {% else %}
+        <div class="empty"><p>Журнал входов ведётся с этой версии — записей пока нет.</p></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -44,6 +44,7 @@ from django.db import models
 from django.urls import reverse
 
 from . import step
+from .matching import usable
 from .mixins import ComponentQuerySet, ComponentSaveMixin
 from .refs import ComponentRefMixin
 
@@ -103,8 +104,21 @@ class BaseComponent(ComponentSaveMixin, models.Model):
     def __str__(self):
         return self.display_title()
 
+    # по этим полям компонент называют — в заголовках, сообщениях, журнале
+    TITLE_FIELDS = ("vendor_pn", "oy_pn", "description")
+
     def display_title(self):
-        return self.vendor_pn or self.oy_pn or self.description or f"#{self.pk}"
+        """Первое заполненное из TITLE_FIELDS, иначе ключ.
+
+        Заглушка («---», «?») названием не считается. Незаполненное в базе
+        пишется именно так, и у разъёмов без Vendor PN на сайте выходило
+        «Компонент --- удалён», а в журнале — строка «---» вместо имени.
+        """
+        for name in self.TITLE_FIELDS:
+            value = usable(getattr(self, name, ""))
+            if value:
+                return value
+        return f"#{self.pk}"
 
     def get_absolute_url(self):
         return reverse("components:detail",
@@ -582,11 +596,24 @@ class OptionField(models.Model):
     class Meta:
         db_table = "oy_option_field"
         ordering = ("field", "id")
-        verbose_name = "Выпадающий список"
-        verbose_name_plural = "Столбцы со списками"
+        # Одно имя везде: раньше раздел звался «Столбцы со списками», кнопка
+        # — «Добавить выпадающий список», заголовок — «Изменить Выпадающий
+        # список». Со строчной буквы: Django сам делает заглавной первую
+        # букву там, где она первая, а в середине фразы («Выберите
+        # выпадающий список для изменения») заглавная была ошибкой
+        verbose_name = "выпадающий список"
+        verbose_name_plural = "Выпадающие списки"
 
     def __str__(self):
-        return self.label or self.field
+        # Таблицы — часть имени: столбец заводят по разу на группу, и без
+        # них заголовок страницы, сообщение «сохранено» и ссылка на соседний
+        # список выглядели бы одинаково у тринадцати записей подряд.
+        # Реестр — внутри: он сам импортирует этот модуль.
+        from .registry import table_title
+
+        where = (", ".join(table_title(table) for table in self.tables)
+                 if self.tables else "все таблицы")
+        return f"{self.label or self.field} · {where}"
 
     def applies_to(self, table):
         """Пустой список таблиц означает «во всех»."""
@@ -646,6 +673,7 @@ class ComponentChange(ComponentRefMixin, models.Model):
     UPDATED = "updated"
     DELETED = "deleted"
     DUPLICATE = "duplicate"
+    IMAGE = "image"
     ACTIONS = [
         (CREATED, "Добавлен"),
         (UPDATED, "Изменён"),
@@ -653,6 +681,10 @@ class ComponentChange(ComponentRefMixin, models.Model):
         # заведён при том, что похожая запись уже была, и человек это
         # подтвердил: событие само по себе, отдельно от заведения
         (DUPLICATE, "Добавлен как дубль"),
+        # картинку посадочного места загрузили, заменили или удалили из
+        # карточки этого компонента. В changes — одно «поле»: имя STEP-файла
+        # до и после, так запись читается тем же видом, что и правка полей
+        (IMAGE, "Изображение"),
     ]
 
     component_table = models.CharField(
@@ -693,12 +725,14 @@ class ComponentChange(ComponentRefMixin, models.Model):
     # «Добавлен как дубль» там переносится на две строки. На странице правки
     # подпись остаётся полной — места хватает.
     SHORT_ACTIONS = {CREATED: "добавлен", UPDATED: "изменён",
-                     DELETED: "удалён", DUPLICATE: "дубль"}
+                     DELETED: "удалён", DUPLICATE: "дубль",
+                     IMAGE: "изображение"}
 
     # цвет чипа в списке — по событию. Держим рядом с подписями: и то, и
     # другое зависит от action, и разъезжаться им незачем
     CHIP_CLASSES = {CREATED: "chip--added", UPDATED: "chip--edited",
-                    DELETED: "chip--gone", DUPLICATE: "chip--dup"}
+                    DELETED: "chip--gone", DUPLICATE: "chip--dup",
+                    IMAGE: "chip--image"}
 
     @property
     def short_action(self):
@@ -862,6 +896,14 @@ class StepRenderJob(models.Model):
                                  verbose_name="Посадочное место")
     source_name = models.CharField(max_length=255, blank=True, default="",
                                    verbose_name="Из какого файла")
+    # Из карточки какого компонента загрузили. Картинка принадлежит
+    # посадочному месту, а журнал изменений ведётся по компонентам — запись
+    # о новой картинке ставится этому. Пусто у пакетной загрузки: там
+    # компонента, из которого загружали, нет
+    component_table = models.CharField(max_length=64, blank=True, default="",
+                                       verbose_name="Таблица компонента")
+    component_id = models.IntegerField(null=True, blank=True,
+                                       verbose_name="Ключ компонента")
     # путь внутри STEP_QUEUE_DIR; после рендера файл удаляется, а строка
     # остаётся — по ней видно, что именно загружали
     step_file = models.CharField(max_length=255, blank=True, default="",

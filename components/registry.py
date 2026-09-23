@@ -57,6 +57,7 @@ class Category:
     table: str           # имя таблицы в PostgreSQL
     extra_columns: tuple = ()
     skip_columns: tuple = ()
+    hidden_fields: tuple = ()
     filter_fields: tuple = ()
     read_only: bool = False
     replacement: bool = False
@@ -132,9 +133,26 @@ FILTER_FIELDS = {
     "transistor": ("vendor", "subgroup", "smt_tht", "package"),
 }
 
+# Символ и посадочное место Allegro — фильтры каждой группы, у которой
+# фильтры вообще есть: по ним ищут, «чем ещё занято это посадочное место»,
+# а поля общие для всех рабочих таблиц. Дописываются в конец набора, а не
+# в каждую строку FILTER_FIELDS — иначе новая группа легко осталась бы без
+# них. У таблиц замен этих полей нет, и там фильтры не появятся сами
+# (Category.filters берёт только свои поля модели); скрытые у группы поля
+# (HIDDEN_FIELDS) не фильтруются тоже.
+ALLEGRO_FILTERS = ("allegro_schematic_part", "allegro_pcb_footprint")
+
 # колонки из общего набора, которые в отдельных группах не нужны
 SKIP_COLUMNS = {
     "pcb": ("vendor", "package"),
+}
+
+# Поля, которых у группы по смыслу нет, хотя колонка в таблице есть: из
+# карточки и формы они убраны, в базе и в выгрузке остаются. Колонку не
+# удалить — таблицы ведёт не Django, и её читает сторонний софт.
+# Посадочного места Allegro у платы нет: во всех записях PCB там «---».
+HIDDEN_FIELDS = {
+    "pcb": ("allegro_pcb_footprint",),
 }
 
 EXTRA_COLUMNS = {
@@ -158,6 +176,20 @@ EXTRA_COLUMNS = {
 REPLACEMENT_SUFFIX = "replacement"
 
 
+def _filter_fields(settings_key):
+    """Фильтры группы: её собственные и за ними — Allegro.
+
+    Группа без фильтров (PCB) их и не получает: пустой набор там задан
+    намеренно, а фильтр из одного Allegro выглядел бы случайным.
+    """
+    own = FILTER_FIELDS.get(settings_key, ())
+    if not own:
+        return own
+    hidden = HIDDEN_FIELDS.get(settings_key, ())
+    return own + tuple(name for name in ALLEGRO_FILTERS
+                       if name not in hidden and name not in own)
+
+
 def _category(model, settings_key, replacement):
     """Категория. Настройки колонок таблица замен берёт у своей рабочей."""
     return Category(
@@ -167,7 +199,8 @@ def _category(model, settings_key, replacement):
         table=model._meta.db_table,
         extra_columns=EXTRA_COLUMNS.get(settings_key, ()),
         skip_columns=SKIP_COLUMNS.get(settings_key, ()),
-        filter_fields=FILTER_FIELDS.get(settings_key, ()),
+        hidden_fields=HIDDEN_FIELDS.get(settings_key, ()),
+        filter_fields=_filter_fields(settings_key),
         replacement=replacement,
     )
 
@@ -201,6 +234,16 @@ def get_category(slug):
 def category_by_table(table):
     """Категория по имени таблицы в базе — так строки BOM находят свою модель."""
     return CATEGORY_BY_TABLE.get(table)
+
+
+def table_title(table):
+    """Название группы по имени таблицы: «Резисторы (замены)», а не z_RESISTOR.
+
+    Неизвестная таблица — например, из истории, где таблицу с тех пор
+    переименовали, — показывается как есть: имя лучше прочерка.
+    """
+    category = category_by_table(table)
+    return category.title if category else table
 
 
 def counterpart(category):

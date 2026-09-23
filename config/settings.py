@@ -63,10 +63,20 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "crispy_forms",
 
+    "users",
     "components",
     "boards",
     "servers",
 ]
+
+# Своя модель пользователя (users/models.py). Ссылаться на неё — только
+# через эту настройку во внешних ключах и get_user_model() в коде.
+#
+# Существующая база переводится на неё скриптом sql/move_user_to_users.sql
+# ДО первого запуска этого кода: без него migrate остановится с
+# InconsistentMigrationHistory — данные при этом не пострадают, но сайт не
+# запустится. Порядок — в docs/schema-history.md.
+AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -88,7 +98,15 @@ MIDDLEWARE = [
     # Раньше здесь стояла своя реализация (components/middleware.py) со
     # списком открытых путей и сравнением по префиксу. Django 5.1 привёз
     # ровно это штатно, вместе с login_not_required, — своё убрано.
+    #
+    # HTMX — перед ним: для запросов за фрагментом страницы перенаправление
+    # на вход подменяется полным переходом, иначе страница входа
+    # вставилась бы внутрь таблицы (config/htmx.py)
+    "config.htmx.HtmxMiddleware",
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
+    # кто делает запрос — для журнала доступа: сигнал о смене роли запроса
+    # не видит (users/access.py). После AuthenticationMiddleware
+    "users.access.ActorMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -109,6 +127,8 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "components.context_processors.navigation",
                 "components.context_processors.permissions",
+                "components.context_processors.htmx",
+                "components.context_processors.version",
             ],
         },
     },
@@ -185,6 +205,16 @@ STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else 
 # собирает collectstatic и раздаёт whitenoise, а эти файлы приходят от
 # людей, переживают пересборку образа и попадают в резервную копию.
 # В контейнере каталог смонтирован томом (см. docker-compose.yml).
+# ---- HTMX -------------------------------------------------------------------
+# Файл htmx лежит в статике проекта, а не берётся с CDN: сайт работает во
+# внутренней сети. Подключается, только если он на месте, — без него всё
+# работает как раньше, обычными переходами: атрибуты hx-* в шаблонах
+# добавлены поверх рабочих ссылок и форм, а не вместо них. Отсюда и
+# проверка: ссылка на несуществующий файл статики уронила бы каждую
+# страницу при DEBUG=False. Как положить файл — docs/install.md.
+HTMX_FILE = "components/htmx.min.js"
+HTMX_ENABLED = (BASE_DIR / "components" / "static" / HTMX_FILE).is_file()
+
 MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("DJANGO_MEDIA_ROOT", str(BASE_DIR / "media")))
 
