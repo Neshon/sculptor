@@ -5,9 +5,6 @@
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">
-    <a href="{% url 'components:list' category.slug %}">{{ category.table }}</a> · {{ category.title }}
-  </div>
   <div class="legend__row">
     <h1 class="mono">{{ object.display_title }}</h1>
     {% if category.replacement %}<span class="chip chip--replacement">замена</span>{% endif %}
@@ -182,8 +179,6 @@
       {% elif not related %}
         <div class="empty">
           <h2>Аналогов нет</h2>
-          <p class="muted">Других записей с OY ID <span class="mono">{{ oy_id }}</span>
-            не нашлось{% if pair %} ни в {{ category.table }}, ни в {{ pair.table }}{% endif %}.</p>
           {% if can_edit_components and pair and not category.replacement and not category.read_only %}
             <a class="btn btn--primary"
                href="{% url 'components:create' pair.slug %}?from={{ object.pk }}">
@@ -255,14 +250,12 @@
         </table>
         <div class="pager">
           <span class="pager__spacer"></span>
-          <a class="btn" href="{% url 'components:changes' %}?table={{ category.table }}">
-            Весь журнал по группе</a>
+          {# журнал целиком, как и кнопка над списком: сузить — на его странице #}
+          <a class="btn" href="{% url 'components:changes' %}">Весь журнал изменений</a>
         </div>
       {% else %}
         <div class="empty">
           <h2>Правок не было</h2>
-          <p class="muted">История ведётся с того момента, как её включили:
-             изменения, сделанные раньше, в неё не попали.</p>
         </div>
       {% endif %}
     </div>
@@ -306,8 +299,6 @@
       {% else %}
         <div class="empty">
           <h2>Нигде не используется</h2>
-          <p class="muted">Ни в одном загруженном BOM этот компонент не найден
-             ни по Vendor P/N с Vendor, ни по GBT P/N.</p>
           <a class="btn" href="{% url 'boards:list' %}">Платы</a>
         </div>
       {% endif %}
@@ -317,9 +308,83 @@
   <div class="panel" data-tab="1C">
     <div class="section__head">1C</div>
     <div class="empty">
-      <h2>Тут скоро что-то будет</h2>
+      <h2>Раздел в разработке</h2>
     </div>
   </div>
 
 </div>
+
+{% comment %}
+  Краткая карточка — панель справа от списка (list.html, preview.js).
+  Не inline: в самой карточке она не выводится, вид отдаёт её отдельно
+  (components/views.py, _preview). Лежит здесь, а не в списке, потому что
+  показывает то же, что карточка, — подписи и вывод значений у них должны
+  меняться вместе.
+
+  Ссылки — обычные: панель вставлена в страницу списка, и всё, что в ней
+  есть, работает как на любой странице. Крестика нет: панель закреплена и
+  стоит всегда, меняется только её содержимое.
+{% endcomment %}
+{% partialdef preview %}
+  {% comment %}
+    Заголовок — Vendor PN как есть в базе, с «---», а не display_title:
+    тот при пустом артикуле подставил бы OY PN или описание, и в панели,
+    где соседние строки сравнивают, это читалось бы как артикул.
+  {% endcomment %}
+  <div class="preview__title">
+    <a class="mono" href="{{ object.get_absolute_url }}">{{ object.vendor_pn|cell }}</a>
+  </div>
+  {% if image %}
+    <div class="stepshot">
+      <a class="shot__link" href="{{ image.image.url }}">
+        <img src="{{ image.image.url }}" alt="{{ object.display_title }}">
+      </a>
+    </div>
+    {# чужой рендер — не молча, как и в карточке: чей он и ссылка на него #}
+    {% if borrowed_from %}
+      <p class="preview__note muted">Изображение компонента с тем же OY ID:
+        <a class="mono" href="{{ borrowed_from.obj.get_absolute_url }}">{{ borrowed_from.obj.vendor_pn|cell }}</a></p>
+    {% endif %}
+  {% else %}
+    {% comment %}
+      Заглушка того же размера, что и картинка: листая строки, панель не
+      меняет высоту, и описание с полями стоят на своём месте, есть у
+      компонента изображение или нет.
+    {% endcomment %}
+    <div class="stepshot">
+      <div class="stepshot__empty">Изображения нет</div>
+    </div>
+  {% endif %}
+  {% comment %}
+    Description и Datasheet — всегда в три строки (preview__clamp): короче
+    — место остаётся, длиннее — подрезаются, целиком в подсказке и в
+    карточке. Иначе высота этих полей менялась бы от строки к строке, и
+    всё ниже них прыгало бы.
+  {% endcomment %}
+  {% if description %}
+    <p class="leadtext" title="{{ description.1|default_if_none:'' }}">
+      <span class="preview__clamp">{{ description.1|cell }}</span></p>
+  {% endif %}
+  <dl class="specs">
+    {% for label, value, name in fields %}
+      <div>
+        <dt>{{ label }}</dt>
+        {% if name == "datasheet" %}
+          <dd title="{{ value|default_if_none:'' }}"><span class="preview__clamp">{{ value|cell }}</span></dd>
+        {% else %}
+          <dd>{% if name == "created" %}{{ value|date:"d.m.Y" }}{% else %}{{ value|cell }}{% endif %}</dd>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </dl>
+  {% if more %}
+    <p class="preview__note muted">Ещё {{ more|plural:"параметр,параметра,параметров" }} — в карточке.</p>
+  {% endif %}
+  <div class="preview__actions">
+    <a class="btn btn--primary" href="{{ object.get_absolute_url }}">Открыть карточку</a>
+    {% if can_edit_components and not category.read_only %}
+      <a class="btn" href="{% url 'components:edit' category.slug object.pk %}">Редактировать</a>
+    {% endif %}
+  </div>
+{% endpartialdef %}
 {% endblock %}

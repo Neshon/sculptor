@@ -12,6 +12,7 @@
 Django>=6.1,<6.2
 psycopg[binary]>=3.2
 openpyxl>=3.1        # разбор BOM-файлов Excel
+rapidfuzz>=3.9       # подбор похожего артикула (components/similar.py)
 Pillow>=10.4         # изображения плат: проверка при загрузке и уменьшение
 django-crispy-forms>=2.3   # одна разметка строки формы на весь проект;
                            # пакет шаблонов свой, templates/oy/

@@ -60,18 +60,20 @@ class AccessEvent(models.Model):
     LOGOUT = "logout"
     ROLE_ADDED = "role_added"
     ROLE_REMOVED = "role_removed"
+    USER_CREATED = "user_created"
     KINDS = [
         (LOGIN, "Вход"),
         (LOGIN_FAILED, "Неудачный вход"),
         (LOGOUT, "Выход"),
         (ROLE_ADDED, "Роль выдана"),
         (ROLE_REMOVED, "Роль снята"),
+        (USER_CREATED, "Заведён сотрудник"),
     ]
 
     # цвет чипа в списке — тем же набором, что у журнала изменений
     CHIP_CLASSES = {LOGIN: "chip--added", LOGIN_FAILED: "chip--gone",
                     LOGOUT: "", ROLE_ADDED: "chip--edited",
-                    ROLE_REMOVED: "chip--dup"}
+                    ROLE_REMOVED: "chip--dup", USER_CREATED: "chip--added"}
 
     created = models.DateTimeField(auto_now_add=True, db_index=True,
                                    verbose_name="Когда")

@@ -3,19 +3,19 @@
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.contrib.auth.views import PasswordChangeView
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.shortcuts import redirect, render
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 
 from components.db import distinct_values
 from components.history import author_names
 from components.models import ComponentChange
 from components.querystring import values_of
 
-from . import roles as role_rules
 from .access import role_changes
-from .forms import AccessFilterForm
+from .forms import AccessFilterForm, UserCreateForm
 from .models import AccessEvent
 from .roles import ROLES, admin_only
 
@@ -29,25 +29,11 @@ LOG_PAGE_SIZE = 50
 def role_rows(user):
     """Роли проекта: у каких сотрудник есть и что каждая даёт.
 
-    Нужны все роли, а не только свои: «у вас нет роли библиотекаря, поэтому
-    компоненты вы не правите» объясняет отказ лучше, чем его отсутствие.
+    Профиль показывает из них те, что есть, — метками рядом с именем.
     """
     names = set(user.groups.values_list("name", flat=True))
     return [{"name": name, "description": description, "has": name in names}
             for name, description in ROLES.items()]
-
-
-def abilities(user):
-    """Что сотрудник может делать — словами, по тем же проверкам, что сайт."""
-    rows = [
-        ("Смотреть компоненты, платы и серверы", True),
-        ("Заводить и править компоненты", role_rules.can_edit_components(user)),
-        ("Загружать BOM и вести платы", role_rules.can_edit_boards(user)),
-        ("Отчёт по дублям, роли сотрудников, журнал доступа",
-         role_rules.is_admin(user)),
-        ("Админка Django", role_rules.can_open_admin(user)),
-    ]
-    return [{"label": label, "allowed": allowed} for label, allowed in rows]
 
 
 def profile(request):
@@ -65,12 +51,32 @@ def profile(request):
     return render(request, "users/profile.html", {
         "profile": user,
         "roles": role_rows(user),
-        "abilities": abilities(user),
         "changes": changes,
         "changes_total": ComponentChange.objects.filter(author=login).count(),
         "changes_url": reverse("components:changes") + f"?author={login}",
         "events": events,
     })
+
+
+# ---- смена пароля ----------------------------------------------------------------
+
+class PasswordChange(PasswordChangeView):
+    """Сотрудник меняет свой пароль сам — начальный задаёт администратор.
+
+    Штатное представление Django: старый пароль спрашивается (чужая
+    незакрытая сессия не должна менять пароль владельца), новый проходит
+    AUTH_PASSWORD_VALIDATORS, а сессия после смены обновляется — сотрудника
+    не выбрасывает на вход. Своё здесь — только шаблон и возврат в профиль
+    с сообщением.
+    """
+
+    template_name = "users/password.html"
+    success_url = reverse_lazy("users:profile")
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        messages.success(self.request, "Пароль изменён.")
+        return response
 
 
 # ---- роли сотрудников ----------------------------------------------------------
@@ -128,6 +134,40 @@ def roles(request):
         "rows": rows,
         "role_headers": list(ROLES.items()),
     })
+
+
+# ---- новый сотрудник -----------------------------------------------------------
+
+@admin_only
+def create_user(request):
+    """Новый сотрудник: учётная запись, начальный пароль и роли.
+
+    Учётная запись и роли — в одной транзакции: сотрудник без ролей, которые
+    ему отметили, хуже, чем незаведённый, — его сочли бы заведённым как
+    надо. Роли выдаются тем же ``groups.add``, что и на странице ролей,
+    поэтому журнал доступа видит и заведение, и каждую роль (сигналы,
+    users/access.py).
+    """
+    form = UserCreateForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        wanted = form.cleaned_data["roles"]
+        groups = list(Group.objects.filter(name__in=wanted))
+        missing = set(wanted) - {group.name for group in groups}
+        if missing:
+            # без этой проверки роль молча не выдалась бы
+            form.add_error("roles", "Не заведены роли: "
+                           + ", ".join(sorted(missing))
+                           + ". Выполните manage.py init_roles.")
+        else:
+            with transaction.atomic():
+                user = form.save()
+                if groups:
+                    user.groups.add(*groups)
+            messages.success(
+                request, f"Сотрудник {user.get_full_name()} "
+                         f"({user.get_username()}) заведён.")
+            return redirect("users:roles")
+    return render(request, "users/user_form.html", {"form": form})
 
 
 # ---- журнал доступа ------------------------------------------------------------

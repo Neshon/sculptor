@@ -70,8 +70,12 @@
 <div class="panel">
   <div class="section__head">
     состав · связано с библиотекой {{ linked_count }} из {{ item_count }}
+    {% if unlinked_count or can_edit_boards %}<span class="toolbar__spacer"></span>{% endif %}
+    {% if unlinked_count %}
+      <a class="btn" href="{% url 'boards:item-hints' board.pk revision.number %}"
+         title="Похожие записи библиотеки для строк, которые не нашлись точно">Подобрать для {{ unlinked_count|plural:"строки,строк,строк" }}</a>
+    {% endif %}
     {% if can_edit_boards %}
-      <span class="toolbar__spacer"></span>
       <a class="btn" href="{% url 'boards:item-pick' board.pk revision.number %}">Добавить компонент</a>
     {% endif %}
   </div>
@@ -88,11 +92,11 @@
         <tr>
           <th style="width:56px">I/N</th>
           <th style="width:52px">M/S</th>
-          <th>Vendor P/N</th>
+          <th>Vendor PN</th>
           <th>Vendor</th>
           <th>OY ID</th>
-          <th>OY P/N</th>
-          <th>GBT P/N</th>
+          <th>OY PN</th>
+          <th>GBT PN</th>
           <th>Description</th>
           <th>Description GBT</th>
           <th>SMT/THT</th>
@@ -127,7 +131,7 @@
               <td class="num">{{ group.main.qty|default:"—" }}</td>
               <td class="desc">{{ group.main.comment|default:"—" }}</td>
               {% if can_edit_boards %}
-                <td class="pn"><a href="{% url 'boards:item-edit' board.pk revision.number group.main.pk %}">править</a></td>
+                <td class="pn"><a href="{% url 'boards:item-edit' board.pk revision.number group.main.pk %}">редактировать</a></td>
               {% endif %}
             </tr>
           {% endif %}
@@ -154,7 +158,7 @@
               <td class="num">{{ item.qty|default:"—" }}</td>
               <td class="desc">{{ item.comment|default:"—" }}</td>
               {% if can_edit_boards %}
-                <td class="pn"><a href="{% url 'boards:item-edit' board.pk revision.number item.pk %}">править</a></td>
+                <td class="pn"><a href="{% url 'boards:item-edit' board.pk revision.number item.pk %}">редактировать</a></td>
               {% endif %}
             </tr>
           {% endfor %}

@@ -4,6 +4,7 @@ import hashlib
 
 from django import forms
 
+from components.filter_forms import FilterForm, filter_field
 from components.matching import is_placeholder
 
 from . import checklists, images
@@ -11,6 +12,23 @@ from .models import Board, BoardItem, BoardRevision
 from .pn import match_key
 from .references import normalize_references
 from .revisions import parse_pn
+
+
+class ListFilterForm(FilterForm):
+    """Поиск и фильтры над списком плат или ревизий — как над компонентами.
+
+    Отличие от :class:`FilterForm` одно: у значения бывает подпись, не
+    равная ему самому (тип платы хранится кодом, показывается словами).
+    Поэтому варианты приходят парами ``(значение, подпись)``.
+    """
+
+    def __init__(self, *args, filters=(), hint="", **kwargs):
+        super().__init__(*args, **kwargs)
+        if hint:
+            # по каким полям ищет — в подсказке: в подписи не поместится
+            self.fields["q"].widget.attrs["title"] = hint
+        for name, label, choices in filters:
+            self.fields[name] = filter_field(label, choices)
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -113,7 +131,7 @@ class BoardForm(PhotoFieldsMixin, forms.ModelForm):
         self.fields["base_pn"].required = True
         self.fields["base_pn"].help_text = (
             "Номер платы без ревизии, например HSBP-5S01. Можно ввести и "
-            "полный номер с ревизией — она и локализация отбросятся")
+            "полный номер с ревизией — ревизия и исполнение отбросятся")
         for name in ("purpose", "applicability", "specs"):
             self.fields[name].widget = forms.Textarea(attrs={"rows": 5})
 
@@ -132,8 +150,8 @@ class BoardForm(PhotoFieldsMixin, forms.ModelForm):
             existing = existing.exclude(pk=self.instance.pk)
         if existing.exists():
             raise forms.ValidationError(
-                f"Плата {base_pn} уже заведена. "
-                f"Новая ревизия добавляется импортом BOM.")
+                f"Плата {base_pn} уже заведена. Новую ревизию добавьте "
+                f"в её карточке или загрузкой BOM.")
         return base_pn
 
 
@@ -189,7 +207,7 @@ class BoardRevisionCreateForm(BoardRevisionForm):
     oy_pn = forms.CharField(
         label="Номер ревизии", max_length=128,
         help_text="Например HSBP-5S01-02C: из него разберутся ревизия платы "
-                  "(0.2), ревизия BOM (C) и локализация",
+                  "(0.2), ревизия BOM (C) и исполнение",
         widget=forms.TextInput())
 
     # номер идёт первым: остальное — карточка, а это опознавательный знак

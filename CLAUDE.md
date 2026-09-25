@@ -32,7 +32,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ссылка на компонент — пара «таблица + ключ», внешних ключей на них нет
   (`components/refs.py`);
 - данные о компоненте, которых нет в его таблице, живут в своих таблицах
-  Django с префиксом `oy_` (журнал, картинки, заявки на рендер).
+  Django с префиксом `components_` (журнал, картинки, заявки на рендер,
+  выпадающие списки).
 
 ## Команды
 
@@ -78,7 +79,7 @@ docker compose up -d --build        # после обновления кода
 
 Тесты — пакет `components/tests/` (модуль на тему: `test_site`,
 `test_library`, `test_forms`, `test_editing`, `test_duplicates`, `test_links`,
-`test_history`, `test_step`, `test_admin`), `boards/tests.py`,
+`test_similar`, `test_history`, `test_step`, `test_admin`), `boards/tests.py`,
 `servers/tests.py`, `users/tests.py`. Почти все —
 `SimpleTestCase`, без базы: проверяется логика, а не данные. Новое поведение
 сопровождается тестом того же вида. Если что-то нельзя проверить без базы —

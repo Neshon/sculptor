@@ -67,6 +67,17 @@ def filter_choices(category, params=None):
     return _filter_choices(category, chosen)
 
 
+def filtering(params, category):
+    """Отобраны ли записи — есть ли поиск или хоть одно значение в фильтре.
+
+    Решает, показывать ли «Сбросить». Смотреть на строку запроса целиком
+    нельзя: сняв последнюю галочку, человек остаётся с ``?per_page=50`` или
+    сортировкой в адресе, и кнопка сброса висела бы над несуженным списком,
+    пока на неё не нажмут.
+    """
+    return bool((params.get("q") or "").strip()) or bool(_chosen(params, category))
+
+
 def _chosen(params, category):
     """Что уже выбрано в фильтрах: ``{имя поля: "знач1|знач2"}``."""
     if params is None:

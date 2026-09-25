@@ -120,7 +120,110 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.04em;
   color: #7d8691;
   white-space: nowrap;
+  /* версия — кнопка «Что нового» (или ссылка без HTMX): выглядит как
+     подпись, пока на неё не навели */
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-decoration: none;
 }
+.topbar__version:hover { color: var(--purple); text-decoration: none; }
+
+/* ---- «Что нового»: окно с историей изменений (base.html, #changelog) ----
+
+   popover, как меню разделов: Esc и щелчок мимо закрывают его сами. По
+   центру экрана, не шире строки, которую удобно читать; выше экрана не
+   растёт — история прокручивается внутри, шапка с кнопками на месте. */
+.changelog-pop {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(760px, calc(100vw - 2 * var(--s-4)));
+  height: fit-content;
+  max-height: calc(100vh - 2 * var(--s-6));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.changelog-pop:popover-open { display: flex; flex-direction: column; }
+.changelog-pop::backdrop { background: var(--scrim); }
+.changelog-pop__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex: 0 0 auto;
+  padding: var(--s-3) var(--s-4) var(--s-3) var(--s-5);
+  border-bottom: 1px solid var(--line);
+}
+/* подпись — как у меню разделов: окна сайта выглядят одинаково */
+.changelog-pop__title {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.changelog-pop__body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+
+/* История изменений — в окне и на странице (components/changelog.html).
+   Версии разделены линией, разделы подписаны мелко: глаз ищет номер
+   версии, а не заголовки «Изменено». */
+.panel .changelog { padding: var(--s-4) var(--s-5) var(--s-5); }
+.changelog--intro { border-bottom: 1px solid var(--line); }
+.changelog__version + .changelog__version {
+  margin-top: var(--s-5);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--line);
+}
+.changelog__number {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-2);
+  font-family: var(--font-data);
+  letter-spacing: var(--tracking-data);
+  font-size: 16px;
+  font-weight: var(--weight-medium);
+}
+.changelog__section {
+  margin: var(--s-4) 0 var(--s-2);
+  font-size: 11px;
+  font-weight: var(--weight-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* ширина строки ограничена, как у описания платы: это читают, а не сканируют */
+.changelog p,
+.changelog li { max-width: 72ch; color: var(--ink-2); line-height: 1.55; }
+.changelog p { margin: 0 0 var(--s-2); }
+.changelog ul,
+.changelog ol { margin: 0 0 var(--s-2); padding-left: var(--s-5); }
+.changelog li + li { margin-top: var(--s-2); }
+.changelog strong { color: var(--ink); font-weight: var(--weight-medium); }
+.changelog code {
+  font-family: var(--font-data);
+  font-size: 0.92em;
+  padding: 0 var(--s-1);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+/* «Обновление» — для того, кто ставит версию на сервер: свёрнуто */
+.changelog__update { margin-top: var(--s-3); }
+.changelog__update summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+.changelog__update[open] summary { margin-bottom: var(--s-2); }
 
 .topbar__search { position: relative; flex: 0 1 clamp(280px, 34vw, 620px); }
 .topbar__search input {
@@ -211,6 +314,117 @@ a:hover { text-decoration: underline; }
 }
 .topbar__logout:hover { border-color: var(--purple); color: #fff; }
 
+/* ---- меню разделов (base.html, #site-menu) ------------------------------ */
+
+/* Панель — штатный popover. Браузер ставит его посередине экрана с рамкой и
+   отступами; здесь он прижат к левому краю на всю высоту и выезжает из-за
+   края. Выезд и затемнение — переходами с @starting-style: у popover нет
+   промежуточного состояния, в котором можно было бы начать анимацию, и без
+   этого правила панель просто появлялась бы на месте. allow-discrete у
+   display и overlay держит панель на экране, пока она уезжает обратно.
+   Где @starting-style не поддержан, меню открывается без движения. */
+.drawer {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: min(var(--drawer), calc(100vw - var(--s-6)));
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-right: 2px solid var(--purple);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+  transform: translateX(-100%);
+  transition: transform var(--slow),
+              overlay var(--slow) allow-discrete,
+              display var(--slow) allow-discrete;
+}
+.drawer:popover-open { display: flex; flex-direction: column; transform: none; }
+@starting-style {
+  .drawer:popover-open { transform: translateX(-100%); }
+}
+
+.drawer::backdrop {
+  background: transparent;
+  transition: background var(--slow),
+              overlay var(--slow) allow-discrete,
+              display var(--slow) allow-discrete;
+}
+.drawer:popover-open::backdrop { background: var(--scrim); }
+@starting-style {
+  .drawer:popover-open::backdrop { background: transparent; }
+}
+
+/* шапка панели той же высоты, что и шапка сайта: кнопка «закрыть» встаёт
+   туда же, где была кнопка меню */
+.drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  min-height: var(--topbar);
+  padding: 0 var(--s-5);
+  margin-bottom: var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.drawer__title {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.drawer__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--pill);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: border-color var(--fast), color var(--fast);
+}
+.drawer__close:hover { border-color: var(--purple); color: var(--ink); }
+.drawer__close svg { width: 16px; height: 16px; }
+
+/* пункт — как в левой навигации: имя раздела моноширинным, а под ним то,
+   что в разделе лежит, — в меню места хватает, и подсказку не надо ловить
+   наведением */
+.drawer__link {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 var(--s-3) 2px;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  transition: background var(--fast), color var(--fast);
+}
+.drawer__link:hover { background: var(--hover); color: var(--ink); text-decoration: none; }
+.drawer__name {
+  font-family: var(--font-data);
+  letter-spacing: var(--tracking-data);
+  font-weight: var(--weight-medium);
+  font-size: 13px;
+}
+.drawer__note { font-size: 12px; color: var(--muted); }
+.drawer__link.is-active { background: var(--purple-soft); color: var(--purple); }
+.drawer__link.is-active .drawer__note { color: var(--ink-2); }
+.drawer__link.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 10px; bottom: 10px;
+  width: 3px;
+  border-radius: var(--pill);
+  background: var(--purple);
+}
+
 /* ============ 5. Навигация ============================================== */
 
 /* Скругление и прокрутка — на разных элементах: Chromium не обрезает
@@ -286,7 +500,24 @@ a:hover { text-decoration: underline; }
 
 /* ============ 6. Заголовки разделов ===================================== */
 
-.legend { margin-bottom: var(--s-4); }
+/* Заголовок раздела с кнопками закреплён под шапкой: на длинной странице
+   кнопки действий остаются под рукой. Закреплён весь .legend, а не
+   .legend__row: липкий элемент не выходит за своего родителя, а родитель
+   строки — .legend ровно её высоты, так что строка не сдвинулась бы.
+
+   Отступы сверху и снизу — полосы фона страницы: прокручиваемое содержимое
+   уходит под заголовок, а не просвечивает между ним и шапкой. Верхний
+   отступ съеден отрицательным полем — в покое заголовок стоит там же, где
+   стоял (под отступом .shell). z-index — выше липких заголовков таблиц,
+   ниже шапки и выпадающих меню. */
+.legend {
+  position: sticky;
+  top: var(--topbar);
+  z-index: 30;
+  margin-top: calc(-1 * var(--s-4));
+  padding: var(--s-4) 0;
+  background: var(--bg);
+}
 .legend__eyebrow {
   font-size: 10px;
   letter-spacing: 0.18em;
@@ -295,13 +526,21 @@ a:hover { text-decoration: underline; }
 }
 .legend__eyebrow a { color: var(--muted); }
 .legend__eyebrow a:hover { color: var(--purple); }
+/* Не ниже кнопки (.btn — 36px): у страницы без кнопок в заголовке —
+   журнала изменений — строка иначе выходила на 8px ниже, и всё под ней
+   стояло выше, чем в списке компонентов, — при переходе между ними
+   таблица и панель справа прыгали */
 .legend__row {
   display: flex;
   align-items: center;
   gap: var(--s-3);
   flex-wrap: wrap;
-  margin-top: var(--s-2);
+  min-height: 36px;
 }
+/* Отступ — только под строкой над заголовком. В разделе компонентов её
+   нет, и заголовок стоит вровень с левой панелью; у плат и серверов в
+   ней обратные ссылки, и отступ отделяет их от заголовка */
+.legend__eyebrow + .legend__row { margin-top: var(--s-2); }
 .legend h1 {
   font-size: 26px;
   font-weight: var(--weight-medium);
@@ -427,8 +666,9 @@ a:hover { text-decoration: underline; }
 .field[pattern]:invalid:focus { border-color: var(--fault); box-shadow: 0 0 0 3px var(--fault-soft); }
 .field::placeholder { color: var(--muted); }
 .field--search { width: 280px; }
-/* в панели фильтров списка — поуже: там ещё десяток фильтров в ряд */
-#list-filters .field--search { width: 220px; }
+/* в панели фильтров списка — поуже: там ещё десяток фильтров в ряд, и
+   каждый пиксель поиска отнимает место у них */
+#list-filters .field--search { width: 180px; }
 /* фильтр показывает своё название целиком, а выбранные значения — сколько
    поместится; предел нужен, чтобы одна длинная строка не занимала всю
    панель, дальше работает многоточие */
@@ -610,6 +850,83 @@ table.grid--list td.desc {
   text-overflow: ellipsis;
 }
 
+/* Колонки списка постоянной ширины — одинаковые на любом экране и на
+   любой странице списка. Раньше браузер раскладывал их по содержимому
+   страницы и растягивал на всё окно, а описание ограничивал долей окна
+   (25vw): на другом мониторе или при другом масштабе список выглядел
+   иначе, а при листании колонки прыгали.
+
+   Ширина задана в знаках (--chars у <col>, из COLUMN_CHARS в
+   components/registry.py): шрифт у <col> — шрифт данных, поэтому 1ch —
+   ширина одного знака артикула, а с разрядкой и отступами ячейки число
+   знаков в колонке ровно то, что задано.
+
+   Описанию достаётся остаток ширины таблицы (100cqw — ширина .table-fit,
+   она контейнер), но не меньше --desc-min. Если места меньше, таблица
+   шире окна и прокручивается вбок, а артикул остаётся на месте (липкая
+   первая колонка). Без 1px на округление сумма колонок иногда выходила
+   на пиксель шире обёртки, и появлялась пустая прокрутка.
+
+   Контейнер — блок внутри окошка, а не само окошко: у окошка Chrome
+   считает 100cqw вместе с вертикальной полосой прокрутки, и, как только
+   она появлялась, таблица выходила за край на её ширину — внизу
+   вылезала ещё и горизонтальная прокрутка.
+
+   Высота окошка — ровно 25 строк, сколько бы их ни пришло (--rows-h, её
+   меряет rows.js по data-rows в разметке): больше — прокручиваются
+   внутри, меньше — под ними пусто, и переключатель страниц под таблицей
+   не сдвигается. Потолок .table-wrap остаётся: на низком экране окошко
+   ниже. Без скрипта — высота по содержимому. */
+.table-wrap--list { position: relative; height: var(--rows-h, auto); }
+/* Пустой результат (list.html): строка-образец держит высоту строки для
+   rows.js и не видна, сообщение — поверх окошка, по центру. Сквозь
+   сообщение щелчки проходят к заголовкам колонок: слой во всё окошко,
+   а кликабельно в нём только своё */
+.rows-probe { visibility: hidden; }
+.empty--over {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.empty--over > * { pointer-events: auto; }
+.table-fit { container-type: inline-size; }
+table.grid--list {
+  --char: calc(1ch + var(--tracking-data));
+  --cell-pad: calc(2 * var(--s-3));
+  --desc-min: calc(32 * var(--char) + var(--cell-pad));
+  table-layout: fixed;
+}
+table.grid--list col {
+  font-family: var(--font-data);
+  width: calc(var(--chars) * var(--char) + var(--cell-pad));
+}
+table.grid--list col.col--flex {
+  width: max(var(--desc-min),
+             calc(100cqw - var(--fixed-chars) * var(--char)
+                  - var(--fixed-count) * var(--cell-pad) - 1px));
+}
+/* Метка события в строке журнала (changes.html) — без вертикальных полей:
+   с ними строка выходила 39 px вместо 34,79 у компонентов, и 25 строк
+   журнала не помещались в то же окошко, что 25 строк списка */
+table.grid--list td .chip--event { padding-block: 0; line-height: 16px; }
+/* ширину держит <col>, а не ячейка: ограничения общих таблиц здесь лишние */
+table.grid--list td.pn, table.grid--list td.desc { min-width: 0; max-width: none; }
+table.grid--list td { overflow: hidden; text-overflow: ellipsis; }
+/* Заголовок переносится по словам, а не подрезается: колонки узкие, а
+   подпись вроде «Power dissipation, W» нужна целиком. Колонка не уже
+   самого длинного слова (column_chars), поэтому слово не рвётся. Прижат
+   книзу: у заголовков в одну и в две строки подписи стоят на одной линии */
+table.grid--list th { white-space: normal; vertical-align: bottom; line-height: 1.25; }
+/* Шапка всегда в две строки, даже если все подписи короткие: иначе
+   высота шапки, а с ней и первая строка таблицы, прыгала бы от группы к
+   группе. Три строки не бывает — такой колонке реестр прибавляет ширину
+   (HEADER_LINES в components/registry.py) */
+table.grid--list th a { min-height: 2lh; align-items: flex-end; }
+
 /* состав платы: текстовых колонок несколько, поэтому каждой отводится
    меньше места, чем в списках компонентов с одним описанием */
 table.grid--bom td.desc { min-width: 200px; max-width: 320px; }
@@ -667,6 +984,10 @@ table.grid--compact td .chip:not(.chip--event) {
   padding: var(--s-4) var(--s-5);
   border-bottom: 1px solid var(--line);
 }
+/* Кнопка в заголовке панели («Выгрузить CSV» над ревизиями, «Добавить
+   компонент» над составом) — обычная кнопка: прописные и разрядка
+   заголовка ей не идут, и рядом с кнопками шапки она выглядела чужой */
+.section__head .btn { text-transform: none; letter-spacing: normal; }
 
 dl.specs { margin: 0; }
 dl.specs > div {
@@ -872,6 +1193,15 @@ dl.specs dd {
 .formrow .hint { color: var(--muted); font-size: 12px; margin-top: 5px; line-height: 1.35; }
 .formrow--wide { grid-column: 1 / -1; }
 
+/* Роли в форме нового сотрудника (users/user_form.html): галочка, имя и
+   что роль даёт — в строку, по одной роли на строку. Подсказка и ошибка —
+   теми же классами, что у строки формы */
+.rolepick { display: grid; gap: var(--s-3); padding: var(--s-5); }
+.rolepick__item { display: flex; align-items: baseline; gap: var(--s-3); cursor: pointer; }
+.rolepick__name { font-weight: var(--weight-medium); }
+.rolepick .hint { color: var(--muted); font-size: 12px; line-height: 1.35; }
+.rolepick .errors { color: var(--fault); font-size: 12px; }
+
 /* Приписка под формой — там, где раньше стояла нижняя панель с кнопками:
    кнопки уехали в шапку карточки, а пояснение осталось при форме. */
 .formnote {
@@ -941,11 +1271,9 @@ dl.specs dd {
    экрана, а не от длины перечня справа. */
 .about {
   display: grid;
-  /* Снимки — 400 px, как в карточке ревизии: плату узнают по виду, и
-     «узнаваемо» начинается примерно с этого размера. Число, а не доля
-     экрана: растягивать снимок вслед за широким монитором незачем,
-     деталей от этого не прибавится, а сжимать нельзя. */
-  grid-template-columns: 400px minmax(0, 1fr) minmax(220px, 300px);
+  /* Описание стоит в узкой левой колонке карточки платы (.boardview) —
+     текст и характеристика друг под другом */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-5);
   padding: var(--s-4) var(--s-5) var(--s-5);
   align-items: start;
@@ -979,14 +1307,6 @@ dl.specs dd {
   padding: var(--s-4);
   border-radius: var(--r-md);
   background: var(--surface-2);
-}
-
-/* Предпросмотр платы. Картинки идут над характеристикой, в той же колонке:
-   вид сверху и снизу — это тоже справка о плате, а не иллюстрация к
-   описанию. Ширину держит колонка, высоту — соотношение сторон. */
-.about__photos {
-  display: grid;
-  gap: var(--s-3);
 }
 
 /* ---- карточка ревизии: снимки слева, панели справа --------------------- */
@@ -1207,6 +1527,164 @@ dl.specs--split > div {
   .cols--aside .stepshot img { height: auto; aspect-ratio: 4 / 3; }
 }
 
+/* Краткая карточка рядом со списком компонентов (list.html, preview.js).
+
+   Панель закреплена: колонка стоит всегда, пока строка не выбрана — с
+   подсказкой. Появись она только с первым щелчком, таблица сжалась бы
+   прямо под курсором, и следующий щелчок пришёлся бы в другую строку.
+
+   --preview-on читает preview.js: хватает ли ширины на панель. Порог
+   здесь, рядом с раскладкой, которую он бережёт: рельс, список и панель
+   помещаются рядом от 1280 px. Уже — таблица сжимается так, что артикулы
+   рвутся посреди, и строка тогда ведёт на карточку целиком, как раньше.
+
+   Список и панель — одной высоты (stretch): при start нижние края стояли
+   вразнобой и прыгали от строки к строке. Выше какой из двух — до того
+   и тянется вторая. */
+.listview {
+  --preview-on: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: stretch;
+}
+@media (min-width: 1280px) {
+  .listview {
+    --preview-on: 1;
+    grid-template-columns: minmax(0, 1fr) var(--preview);
+  }
+}
+@media (max-width: 1279px) {
+  .listview .preview { display: none; }
+}
+/* Карточка платы: описание слева, список ревизий по центру, краткая
+   карточка ревизии справа. Та же сетка .listview — от неё и порог панели
+   справа (--preview-on), — только с колонкой описания перед списком.
+   Уже 1280 px панели справа нет, как и у всех списков; уже 900 px и
+   описанию рядом со списком тесно — оно уходит наверх. */
+/* описание платы по высоте не выравниваем: оно бывает длиннее списка и
+   растянуло бы за собой и список, и панель */
+.boardview > .stack { align-self: start; }
+@media (min-width: 900px) {
+  .boardview { grid-template-columns: var(--about) minmax(0, 1fr); }
+}
+@media (min-width: 1280px) {
+  .boardview { grid-template-columns: var(--about) minmax(0, 1fr) var(--preview); }
+}
+
+/* Панель стоит на месте, пока список прокручивается, — как рельс слева.
+   Выше экрана не растёт: длинная карточка прокручивается внутри, а кнопки
+   внизу остаются на виду.
+
+   Колонкой — ради кнопок: панель тянется до высоты списка, и короткая
+   карточка оставляла бы их посередине, а не внизу (margin-top: auto у
+   .preview__actions). flex-shrink: 0 — иначе при нехватке высоты flex
+   сжал бы картинку и поля вместо прокрутки. */
+.preview {
+  position: sticky;
+  top: calc(var(--topbar) + var(--s-4));
+  max-height: calc(100vh - var(--topbar) - var(--s-5));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  transition: opacity var(--fast);
+}
+.preview > * { flex-shrink: 0; }
+/* следующая строка грузится — старое содержимое приглушено, а не пропадает */
+.preview.htmx-request { opacity: 0.6; }
+
+.preview__title { padding: var(--s-4) var(--s-5) 0; }
+.preview__title a {
+  font-family: var(--font-data);
+  letter-spacing: var(--tracking-data);
+  font-size: 17px;
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+  word-break: break-all;
+}
+.preview__title a:hover { color: var(--purple); text-decoration: none; }
+
+/* Краткая версия правки рядом с журналом (change.html#preview): событие,
+   дата, автор и откуда — метками под заголовком, как в шапке правки */
+.preview__meta { display: flex; flex-wrap: wrap; gap: var(--s-2); padding: var(--s-3) var(--s-5) 0; }
+/* «было» над «стало»: рядом в узкой панели им места нет, и длинное
+   значение рвалось бы на слоги */
+.preview__diff dd { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
+
+.preview .leadtext { font-size: 13px; }
+/* Description и Datasheet — ровно в три строки: короткое держит место,
+   длинное подрезается многоточием. Высота на вложенном элементе, а не на
+   самом поле: у поля свои отступы, и 3lh с ними считать было бы неверно */
+.preview__clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  min-height: 3lh;
+}
+/* Заглушка вместо картинки — той же рамки 4:3, что и рендер, чтобы
+   панель не меняла высоту от строки к строке */
+.stepshot__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+}
+/* Снимки платы или ревизии в краткой карточке — сверху и снизу, друг под
+   другом во всю ширину панели (boards/_preview_shots.html). Рамка 4:3 и у
+   снимка, и у заглушки: панель не меняет высоту от строки к строке.
+   contain — плату не обрезаем, по контуру и разъёмам её и узнают */
+.preview__shots {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+}
+.preview__shots .shot img,
+.preview__shots .shot__blank { aspect-ratio: 4 / 3; }
+.preview__shots .shot img { object-fit: contain; }
+.preview__shots .shot__blank svg { width: 22px; height: 22px; }
+
+/* подпись в 220 px, как в карточке, съела бы половину узкой панели */
+.preview dl.specs > div {
+  grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+  gap: var(--s-3);
+  padding: 7px var(--s-5);
+}
+
+.preview__note { margin: 0; padding: var(--s-3) var(--s-5); font-size: 12px; line-height: 1.6; }
+.preview__note kbd {
+  font-family: var(--font-data);
+  font-size: 11px;
+  padding: 0 var(--s-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+
+.preview__actions {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: var(--s-4) var(--s-5);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/* строка, чья карточка открыта справа: без подсветки, листая стрелками,
+   не видно, про что панель */
+table.grid tbody tr.is-previewed { background: var(--purple-soft); }
+table.grid tbody tr.is-previewed td:first-child { box-shadow: inset 2px 0 0 var(--purple); }
+
 /* Панель, внутри которой список полей сам решает, делиться ли на два
    столбца. Ширина у неё непредсказуемая — слева от неё стоит картинка,
    на узком экране колонки схлопываются, — поэтому решает не ширина окна,
@@ -1372,26 +1850,6 @@ dl.specs--pairs > div {
   font-weight: var(--weight-medium);
 }
 .speclist__item--group::before { content: none; }
-
-/* На средних экранах в ряд остаются две колонки: описание важнее
-   характеристики, а фото уходит под них целиком — узкой полосой оно
-   перестаёт что-либо показывать.
-   Порог поднят с 1400 до 1500 px вместе с шириной снимка: 400 + описание
-   + характеристика в 1400 уже не укладываются, и описание сплющивалось. */
-@media (max-width: 1500px) {
-  .about { grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); }
-  .about__photos {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    /* верхняя граница та же 400 px: снимок не должен растянуться на
-       половину экрана только потому, что он тут один */
-    grid-template-columns: repeat(auto-fit, minmax(240px, 400px));
-  }
-}
-@media (max-width: 900px) {
-  .about { grid-template-columns: minmax(0, 1fr); }
-  .about__photos { grid-row: auto; }
-}
 
 /* Снимок в 400 px и панели рядом перестают помещаться раньше, чем кончается
    экран: столбцы складываются, снимки уходят наверх. */
@@ -1805,77 +2263,6 @@ dl.specs--pairs > div {
 
 .hints { padding: 0 var(--s-5) var(--s-5); display: grid; gap: var(--s-2); color: var(--ink-2); }
 
-/* полнота связывания BOM: доля строк, опирающихся на библиотеку */
-.coverage__main {
-  display: flex;
-  align-items: center;
-  gap: var(--s-5);
-  padding: var(--s-4) var(--s-5);
-}
-
-.coverage__stat { flex: 0 0 auto; }
-.coverage__value {
-  font-size: 34px;
-  font-weight: var(--weight-medium);
-  line-height: 1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-.coverage__value span { font-size: 18px; color: var(--muted); margin-left: 2px; }
-.coverage__stat .stat__label { margin-top: 6px; }
-
-.coverage__body { flex: 1; min-width: 0; }
-.coverage__bar {
-  height: 10px;
-  border-radius: var(--pill);
-  background: var(--paper-2, var(--line));
-  overflow: hidden;
-}
-.coverage__bar span {
-  display: block;
-  height: 100%;
-  border-radius: var(--pill);
-  background: linear-gradient(90deg, var(--purple-2), var(--purple));
-}
-
-.coverage__legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-4);
-  margin-top: var(--s-2);
-  font-size: 12px;
-  color: var(--ink-2);
-}
-/* точка перед числом заменяет подпись: видно, что к чему относится */
-.coverage__key { display: inline-flex; align-items: center; gap: 6px; }
-.coverage__key::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.coverage__key--linked::before { background: var(--purple); }
-.coverage__key--plain::before { background: var(--line); }
-
-.coverage__worst {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2);
-  padding: var(--s-3) var(--s-5);
-  border-top: 1px solid var(--line);
-  background: var(--surface-2);
-}
-.coverage__worst .chip { color: var(--ink-2); }
-.coverage__worst .chip:hover { text-decoration: none; color: var(--purple); }
-.coverage__worst .chip b {
-  margin-left: 6px;
-  font-family: var(--font-data);
-  letter-spacing: var(--tracking-data);
-  color: var(--purple);
-}
-
 /* предположение в импорте ссылок: артикул, пояснение и кнопка в строку.
    Имя не .hint — тот класс уже занят подсказками под полями форм */
 .suggest { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
@@ -1888,11 +2275,6 @@ dl.specs--pairs > div {
 .linklist li { padding: var(--s-2) 0; border-bottom: 1px solid var(--line-soft); }
 .linklist li:last-child { border-bottom: 0; }
 .linklist a { word-break: break-word; }
-
-@media (max-width: 720px) {
-  .coverage__main { flex-direction: column; align-items: flex-start; gap: var(--s-3); }
-  .coverage__body { width: 100%; }
-}
 
 /* ============ 11a. Страница входа ======================================= */
 
@@ -2170,6 +2552,11 @@ body.lightbox-open { overflow: hidden; }
   .main { width: 100%; }
   /* на узком экране прокрутка внутри окошка мешает вдвойне */
   .table-wrap { max-height: none; min-height: 0; }
+  /* и без пустого места под короткой таблицей: прокрутки внутри тут нет,
+     и держать высоту в 25 строк незачем */
+  .table-wrap--list { height: auto; }
+  /* окошко здесь по высоте строк, и поверх него сообщению тесно — под шапкой */
+  .empty--over { position: static; }
   .topbar { flex-wrap: wrap; padding: var(--s-2) var(--s-3); gap: var(--s-3); }
   .topbar__side { flex: 1 1 auto; }
   .topbar__version { display: none; }
@@ -2184,6 +2571,9 @@ body.lightbox-open { overflow: hidden; }
   .auth__cables { margin: 0 calc(var(--s-4) * -1); height: 40px; }
   .auth__form { padding: var(--s-5) var(--s-4); }
   .legend h1 { font-size: 21px; }
+  /* шапка здесь в две строки и выше --topbar — закреплённый заголовок
+     уходил бы под неё, да и на телефоне съедал бы пол-экрана */
+  .legend { position: static; margin: 0 0 var(--s-4); padding: 0; }
   .notes { left: var(--s-3); right: var(--s-3); max-width: none; }
 }
 

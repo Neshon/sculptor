@@ -3,15 +3,28 @@
 from django.conf import settings
 
 from config import __version__
-
 from users.roles import can_edit_boards, can_edit_components, is_admin
+
 from .registry import MAIN_CATEGORIES, REPLACEMENT_CATEGORIES
+
+
+def section(match):
+    """Раздел меню для найденного маршрута: servers, boards, components…
+
+    Это приложение маршрута. Решается здесь один раз: по разделу меню
+    отмечает текущий пункт, а шаблон решает, нужна ли левая панель. У
+    страницы без маршрута (404) раздела нет.
+    """
+    if match is None:
+        return ""
+    return match.app_name
 
 
 def navigation(request):
     return {
         "nav_categories": MAIN_CATEGORIES,
         "nav_replacements": REPLACEMENT_CATEGORIES,
+        "nav_section": section(getattr(request, "resolver_match", None)),
     }
 
 

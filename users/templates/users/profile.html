@@ -12,12 +12,13 @@
     {% for role in roles %}
       {% if role.has %}<span class="chip chip--table">{{ role.name }}</span>{% endif %}
     {% endfor %}
-    {% if is_admin %}
-      <span class="legend__actions">
+    <span class="legend__actions">
+      {% if is_admin %}
         <a class="btn" href="{% url 'users:roles' %}">Сотрудники и роли</a>
         <a class="btn" href="{% url 'users:access-log' %}">Журнал доступа</a>
-      </span>
-    {% endif %}
+      {% endif %}
+      <a class="btn" href="{% url 'users:password' %}">Сменить пароль</a>
+    </span>
   </div>
 </div>
 
@@ -42,36 +43,12 @@
         Изменить сведения о себе может администратор.
       </p>
     </div>
-
-    <div class="panel">
-      <div class="section__head">роли и права</div>
-      <dl class="specs">
-        {% for role in roles %}
-          <div>
-            <dt>{{ role.name }}</dt>
-            <dd>
-              {% if role.has %}<span class="chip chip--added">есть</span>{% else %}<span class="chip">нет</span>{% endif %}
-              <span class="muted">{{ role.description }}</span>
-            </dd>
-          </div>
-        {% endfor %}
-      </dl>
-      <div class="section__head">что вам доступно</div>
-      <dl class="specs specs--tight">
-        {% for row in abilities %}
-          <div>
-            <dt>{{ row.label }}</dt>
-            <dd>{% if row.allowed %}<span class="chip chip--added">да</span>{% else %}<span class="chip">нет</span>{% endif %}</dd>
-          </div>
-        {% endfor %}
-      </dl>
-    </div>
   </div>
 
   <div class="stack">
     <div class="panel">
       <div class="section__head">
-        мои правки в справочнике
+        мои правки в библиотеке
         <span class="toolbar__spacer"></span>
         {% if changes_total %}
           <a href="{{ changes_url }}">все {{ changes_total|plural:"запись,записи,записей" }}</a>
@@ -95,7 +72,7 @@
           </table>
         </div>
       {% else %}
-        <div class="empty"><p>Правок в справочнике пока нет.</p></div>
+        <div class="empty"><p>Правок в библиотеке пока нет.</p></div>
       {% endif %}
     </div>
 
@@ -120,7 +97,7 @@
           входил не он, узнать это раньше администратора — лучший случай.
         {% endcomment %}
       {% else %}
-        <div class="empty"><p>Журнал входов ведётся с этой версии — записей пока нет.</p></div>
+        <div class="empty"><p>Входов пока не было.</p></div>
       {% endif %}
     </div>
   </div>

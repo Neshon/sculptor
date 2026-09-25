@@ -41,7 +41,7 @@
         {% if board %}Сохранить{% else %}Завести плату{% endif %}
       </button>
       <a class="btn btn--ghost"
-         href="{% if board %}{{ board.get_absolute_url }}{% else %}{% url 'boards:list' %}{% endif %}">Отмена</a>
+         href="{% if board %}{{ board.get_absolute_url }}{% else %}{% url 'boards:list' %}{% endif %}">Отменить</a>
     </div>
   </form>
 </div>

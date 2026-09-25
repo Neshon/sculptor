@@ -7,7 +7,7 @@
   <div class="legend__eyebrow">применяемость</div>
   <div class="legend__row">
     <h1 class="dbname">{{ item.oy_pn }}</h1>
-    <span class="legend__count">{{ rows|length }} изделий</span>
+    <span class="legend__count">{{ rows|length|plural:"позиция,позиции,позиций" }}</span>
     <span class="legend__actions">
       <a class="btn btn--ghost" href="{{ item.get_absolute_url }}">К карточке</a>
     </span>
@@ -19,7 +19,7 @@
     <div class="table-wrap">
       <table class="grid">
         <thead>
-          <tr><th style="width:90px">Уровней</th><th>OY P/N</th><th>Тип</th><th>Наименование</th></tr>
+          <tr><th style="width:90px">Уровней</th><th>OY PN</th><th>Тип</th><th>Наименование</th></tr>
         </thead>
         <tbody>
           {% for row in rows %}
@@ -34,7 +34,7 @@
       </table>
     </div>
     <div class="hints muted">
-      «Уровней» — через сколько ступеней состава позиция входит в изделие.
+      «Уровней» — через сколько ступеней состава позиция входит в другую.
     </div>
   {% else %}
     <div class="empty"><h2>Нигде не применяется</h2>

@@ -172,7 +172,7 @@ class SuggestTests(SimpleTestCase):
         hints = suggest("Создание транзистора 2N7002KTB_R1",
                         self.buckets("2N7002KTB"))
         self.assertEqual(hints[0]["pn"], "2N7002KTB")
-        self.assertEqual(hints[0]["reason"], "в задаче лишний суффикс")
+        self.assertEqual(hints[0]["reason"], "в библиотеке без суффикса")
 
     def test_different_separators(self):
         hints = suggest("Создание транзистора MMBT3904 7 F",
@@ -217,6 +217,38 @@ class SuggestTests(SimpleTestCase):
         hints = suggest("Создание диода BAV99-7-X", self.buckets("BAV99-7-F"))
         self.assertTrue(hints)
         self.assertEqual(hints[0]["pn"], "BAV99-7-F")
+
+    def test_typo_at_the_start_is_caught(self):
+        # Раньше похожее искали только среди артикулов с теми же первыми
+        # четырьмя знаками, и опечатка в начале не находилась никогда
+        hints = suggest("Создание диода BVA99-7-F", self.buckets("BAV99-7-F"))
+        self.assertTrue(hints)
+        self.assertEqual(hints[0]["pn"], "BAV99-7-F")
+        self.assertEqual(hints[0]["reason"], "похожий артикул")
+
+    def test_whole_library_is_compared(self):
+        # тысячи артикулов с тем же началом не заслоняют нужный: потолка
+        # числа сравнений больше нет
+        crowd = [f"RC0402FR-07{n}KL" for n in range(2000)]
+        hints = suggest("Создание резистора XC0402FR-07999KL",
+                        self.buckets(*crowd))
+        self.assertEqual(hints[0]["pn"], "RC0402FR-07999KL")
+
+    def test_best_score_wins_over_the_first(self):
+        # Первым артикул находится по куску вместе с «Создание резистора» —
+        # с низкой оценкой; по самому артикулу она выше, и выше всех должен
+        # быть он, а не соседние номиналы, найденные раньше
+        hints = suggest("Создание резистора Р1-12-0,1-91 Ом±5%-М-К-М ТУ",
+                        self.buckets("Р1-12-0,1-91 Ом±5%-М-К-М",
+                                     "Р1-12-0,1-9,1 Ом±5%-М-К-М",
+                                     "Р1-12-0,1-51 Ом±5%-М-К-М"))
+        self.assertEqual(hints[0]["pn"], "Р1-12-0,1-91 Ом±5%-М-К-М")
+
+    def test_digit_typo_is_still_caught(self):
+        # здесь цифры не сверяются: рядом с подсказкой стоит название задачи
+        hints = suggest("Создание транзистора MMBT3904-7-F",
+                        self.buckets("MMBT3906-7-F"))
+        self.assertEqual(hints[0]["pn"], "MMBT3906-7-F")
 
     def test_suggestion_links_to_the_card(self):
         hints = suggest("Создание транзистора 2N7002KTB_R1",

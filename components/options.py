@@ -11,7 +11,7 @@
 from .cache import OPTIONS_KEY, cached
 from .db import distinct_values, fallback, unavailable
 from .models import OptionField
-from .registry import CATEGORIES, category_by_table
+from .registry import CATEGORIES, MAIN_CATEGORIES, category_by_table, counterpart
 
 
 def table_options(table):
@@ -140,6 +140,27 @@ def source_categories(field, tables=()):
     wanted = set(tables or ())
     return [c for c in CATEGORIES.values()
             if field in c.field_names and (not wanted or c.table in wanted)]
+
+
+def group_tables(field):
+    """``[[таблица, таблица замен], …]`` — таблицы по группам, где столбец есть.
+
+    Для списков, которые у каждой группы свои: производители резисторов и
+    разъёмов почти не пересекаются, и общий на все таблицы список — это
+    полторы сотни вариантов там, где нужны десять. Замены идут в одну
+    группу со своими оригиналами: это те же детали, и производители у них
+    те же. Так же заведены подгруппы (``load_options --per-group``).
+    """
+    groups = []
+    for category in MAIN_CATEGORIES:
+        if field not in category.field_names:
+            continue
+        tables = [category.table]
+        pair = counterpart(category)
+        if pair is not None and field in pair.field_names:
+            tables.append(pair.table)
+        groups.append(tables)
+    return groups
 
 
 def values_in_data(categories, field):

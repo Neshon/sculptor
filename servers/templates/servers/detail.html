@@ -14,7 +14,7 @@
       <a class="btn" href="{% url 'servers:summary' item.pk %}">Сводка</a>
       <a class="btn" href="{% url 'servers:where-used' item.pk %}">Где применяется</a>
       {% if can_edit_boards %}
-        <a class="btn" href="{% url 'servers:edit' item.pk %}">Править</a>
+        <a class="btn" href="{% url 'servers:edit' item.pk %}">Редактировать</a>
       {% endif %}
     </span>
   </div>
@@ -58,12 +58,12 @@
         <table class="grid">
           <thead>
             <tr>
-              <th style="width:70px">поз.</th>
-              <th>что входит</th>
-              <th>описание</th>
-              <th style="width:110px">кол-во</th>
-              <th>обозначение</th>
-              <th>примечание</th>
+              <th style="width:70px">Поз.</th>
+              <th>Что входит</th>
+              <th>Описание</th>
+              <th style="width:110px">Кол-во</th>
+              <th>Обозначение</th>
+              <th>Примечание</th>
               {% if can_edit_boards and not item.is_board %}<th style="width:120px"></th>{% endif %}
             </tr>
           </thead>
@@ -84,7 +84,7 @@
                 <td class="desc">{{ line.comment|default:"—" }}</td>
                 {% if can_edit_boards and not item.is_board %}
                   <td>
-                    <a class="btn btn--ghost" href="{% url 'servers:line-edit' item.pk line.line.pk %}">править</a>
+                    <a class="btn btn--ghost" href="{% url 'servers:line-edit' item.pk line.line.pk %}">редактировать</a>
                   </td>
                 {% endif %}
               </tr>
@@ -95,7 +95,7 @@
     {% else %}
       <div class="empty">
         <h2>Состава пока нет</h2>
-        <p class="muted">добавьте строки руками или загрузите system bom.</p>
+        <p class="muted">Добавьте строки вручную или загрузите System BOM.</p>
       </div>
     {% endif %}
   </div>
@@ -109,7 +109,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="hints muted">Ни в одно изделие не входит.</div>
+      <div class="hints muted">Ни в одну позицию не входит.</div>
     {% endif %}
   </div>
 </div>

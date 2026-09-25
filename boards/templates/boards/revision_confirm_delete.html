@@ -18,7 +18,7 @@
     {% if revision.is_current %}<span class="chip chip--replacement">текущая ревизия</span>{% endif %}
   </div>
   <dl class="specs">
-    <div><dt>OY P/N</dt><dd>{{ revision.oy_pn|default:"—" }}</dd></div>
+    <div><dt>OY PN</dt><dd>{{ revision.oy_pn|default:"—" }}</dd></div>
     <div><dt>Ревизия платы</dt><dd>{{ revision.board_rev|default:"—" }}</dd></div>
     <div><dt>Ревизия BOM</dt><dd>{{ revision.bom_rev|default:"—" }}</dd></div>
     <div><dt>Исполнение</dt><dd>{{ revision.variant|default:"—" }}</dd></div>
@@ -38,7 +38,7 @@
   <form class="formbar" method="post">
     {% csrf_token %}
     <button class="btn btn--danger" type="submit">Удалить безвозвратно</button>
-    <a class="btn btn--ghost" href="{{ revision.get_absolute_url }}">Оставить</a>
+    <a class="btn btn--ghost" href="{{ revision.get_absolute_url }}">Отменить</a>
   </form>
 </div>
 {% endblock %}

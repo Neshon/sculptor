@@ -5,13 +5,6 @@
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">
-    {% if category %}
-      <a href="{% url 'components:list' category.slug %}">{{ category.table }}</a> · история изменений
-    {% else %}
-      {{ change.component_table }} · история изменений
-    {% endif %}
-  </div>
   <div class="legend__row">
     <h1 class="mono">{{ change.get_action_display }}</h1>
     <span class="chip chip--event {{ change.chip_class }}">{{ change.short_action }}</span>
@@ -42,7 +35,7 @@
   {# у дубля в changes не поля, а записи, с которыми совпало #}
   <div class="panel">
     <div class="section__head">
-      совпадает с {% if matches %} · {{ matches|length }}{% endif %}
+      совпадения{% if matches %} · {{ matches|length }}{% endif %}
     </div>
     <p class="muted" style="padding:0 var(--s-4)">
       Компонент завели, когда в библиотеке уже были похожие записи. Форма
@@ -144,3 +137,90 @@
   {% endif %}
 </div>
 {% endblock %}
+
+{% comment %}
+  Краткая версия правки — панель справа от журнала (changes.html,
+  preview.js), как краткая карточка компонента рядом с его списком. Не
+  inline: на странице правки она не выводится, вид отдаёт её отдельно
+  (change_views.component_change, по заголовку HX-Target). Лежит здесь,
+  рядом с полной версией: подписи и то, что показывается, меняются вместе.
+
+  Изменения — парами «параметр: было → стало» друг под другом, а не
+  таблицей в три колонки: в панели шириной 380 px три колонки оставили бы
+  значениям по несколько знаков.
+{% endcomment %}
+{% partialdef preview %}
+  <div class="preview__title">
+    {% if object %}
+      <a class="mono" href="{{ object.get_absolute_url }}">{{ object.display_title }}</a>
+    {% else %}
+      <span class="mono">{{ change.component_table }} #{{ change.component_id }}</span>
+    {% endif %}
+  </div>
+  <div class="preview__meta">
+    <span class="chip chip--event {{ change.chip_class }}">{{ change.short_action }}</span>
+    <span class="chip">{{ change.created|date:"d.m.Y H:i" }}</span>
+    <span class="chip" title="{{ change.author }}">{{ change.author_display|default:"автор неизвестен" }}</span>
+    {% if change.source %}<span class="chip">{{ change.source }}</span>{% endif %}
+  </div>
+  {% if not object %}
+    <p class="preview__note muted">Компонента больше нет: запись
+      {{ change.component_table }} #{{ change.component_id }} удалена или перенесена.</p>
+  {% endif %}
+
+  {% if change.is_duplicate %}
+    <div class="section__head">совпадения{% if matches %} · {{ matches|length }}{% endif %}</div>
+    <dl class="specs">
+      {% for item in matches %}
+        <div>
+          <dt>{{ item.reason|default:"артикул" }}</dt>
+          <dd>
+            {% if item.url %}<a href="{{ item.url }}">{{ item.title|default:item.table }}</a>
+            {% else %}{{ item.title|default:item.table }} <span class="muted">· удалена</span>{% endif %}
+          </dd>
+        </div>
+      {% endfor %}
+    </dl>
+  {% elif change.changes %}
+    {% comment %}
+      items — не всё: у заведения и удаления только Vendor PN и Description
+      (change_views.preview_changes), остальное — строкой «ещё N» ниже.
+    {% endcomment %}
+    <div class="section__head">
+      {% if change.action == "deleted" %}что было в записи
+      {% elif change.action == "created" %}заведён с полями
+      {% else %}что поменялось{% endif %}
+      · {{ change.changes|length }}
+    </div>
+    <dl class="specs preview__diff">
+      {% for item in items %}
+        <div>
+          <dt>{{ item.label }}</dt>
+          <dd>
+            {# у заведения «было» нет — пустой прочерк над каждым значением только шумел #}
+            {% if change.action != "created" %}
+              {% if item.old %}<span class="diff diff--old">{{ item.old }}</span>
+              {% else %}<span class="diff--none">—</span>{% endif %}
+            {% endif %}
+            {% if change.action != "deleted" %}
+              {% if item.new %}<span class="diff diff--new">{{ item.new }}</span>
+              {% else %}<span class="diff--none">—</span>{% endif %}
+            {% endif %}
+          </dd>
+        </div>
+      {% endfor %}
+    </dl>
+    {% if more %}
+      <p class="preview__note muted">Ещё {{ more|plural:"поле,поля,полей" }} — на странице правки.</p>
+    {% endif %}
+  {% else %}
+    <p class="preview__note muted">В этой правке не осталось полей.</p>
+  {% endif %}
+
+  <div class="preview__actions">
+    <a class="btn btn--primary" href="{% url 'components:change' change.pk %}">Открыть правку</a>
+    {% if object %}
+      <a class="btn" href="{{ object.get_absolute_url }}">К компоненту</a>
+    {% endif %}
+  </div>
+{% endpartialdef %}

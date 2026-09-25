@@ -1,4 +1,5 @@
 {% extends "components/base.html" %}
+{% load components_extras %}
 
 {% block title %}{{ board.base_pn }} · Платы{% endblock %}
 
@@ -14,10 +15,10 @@
       <a class="chip chip--table" href="{{ current.get_absolute_url }}"
          title="текущая ревизия">{{ current.oy_pn|default:current.label }}</a>
     {% endif %}
-    <span class="legend__count">{{ revisions|length }} ревизий</span>
+    <span class="legend__count">{{ revision_total|plural:"ревизия,ревизии,ревизий" }}</span>
     <span class="legend__actions">
       {% if can_edit_boards %}
-        <a class="btn" href="{% url 'boards:edit' board.pk %}">Править карточку</a>
+        <a class="btn" href="{% url 'boards:edit' board.pk %}">Редактировать карточку</a>
         <a class="btn" href="{% url 'boards:revision-create' board.pk %}">Добавить ревизию</a>
         <a class="btn btn--primary" href="{% url 'boards:import' %}">Загрузить BOM</a>
         <a class="btn btn--danger" href="{% url 'boards:delete' board.pk %}">Удалить плату</a>
@@ -26,29 +27,33 @@
   </div>
 </div>
 
+{% comment %}
+  Три колонки: описание платы слева, список ревизий по центру, краткая
+  карточка ревизии справа (.boardview в app.css). Сетка — та же .listview,
+  что у списков: от неё preview.js узнаёт, есть ли место под панель справа.
+  Список ревизий устроен как список компонентов (components/list.html):
+  панель — фрагмент panel, её отдаёт вид на запрос HTMX от её же фильтров;
+  разметка общая со списком плат (boards/_listpanel.html).
+{% endcomment %}
+<div class="listview boardview">
 <div class="stack">
 
 <div class="panel">
   <div class="section__head">описание</div>
   {% comment %}
-    Блок разворачивается всегда, даже если платой ещё не занимались: место
-    под снимки должно быть видно, а не исчезать. Текстовая часть при этом
-    может оказаться пустой — там своя подсказка, откуда берётся описание.
+    Снимков платы здесь нет: в узкой левой колонке они занимали весь первый
+    экран, а текст и характеристику уводили вниз. Снимок сверху виден в
+    краткой карточке платы в списке плат, загружаются оба в форме карточки.
+    Текстовая часть может оказаться пустой — там своя подсказка, откуда
+    берётся описание.
   {% endcomment %}
   <div class="about">
-    <div class="about__photos">
-      {% include "_shot.html" with photo=board.photo_top caption="Top side" subject=board.base_pn side="сверху" %}
-      {% include "_shot.html" with photo=board.photo_bottom caption="Bottom side" subject=board.base_pn side="снизу" %}
-    </div>
-
     <div class="about__text">
       {% if board.name %}<h2 class="about__name">{{ board.name }}</h2>{% endif %}
       {% if board.purpose %}<p>{{ board.purpose|linebreaksbr }}</p>{% endif %}
       {% if board.applicability %}<p>{{ board.applicability|linebreaksbr }}</p>{% endif %}
       {% if not board.name and not board.purpose and not board.applicability %}
-        <p class="muted">Описания пока нет. Оно приходит со страницы платы
-           в Confluence — <code>import_cards</code>, — или заполняется в
-           карточке.</p>
+        <p class="muted">Описания пока нет — его можно заполнить в карточке платы.</p>
       {% endif %}
     </div>
 
@@ -65,65 +70,57 @@
   </div>
 </div>
 
-<div class="panel">
-  <div class="section__head">список версий печатных плат · {{ revisions|length }}</div>
-  {% if revisions %}
-    <div class="table-wrap">
-      <table class="grid">
-        <thead>
-          <tr>
-            <th>Наименование печатной платы</th>
-            <th>Наименование BOM</th>
-            <th style="width:100px">Rev PCB</th>
-            <th style="width:100px">Rev BOM</th>
-            <th style="width:110px">BOM загружен</th>
-            <th>Дополнительные сведения</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in revisions %}
-            <tr data-href="{{ item.get_absolute_url }}">
-              <td class="pn">
-                <a class="rowlink" href="{{ item.get_absolute_url }}">{{ item.pcb_name|default:item.oy_pn|default:item.number }}</a>
-                {% if item.is_current %}<span class="chip chip--table">текущая</span>{% endif %}
-                {% if item.approved %}<span class="chip chip--added" title="карточка утверждена">✓</span>{% endif %}
-              </td>
-              <td class="pn">{{ item.bom_name|default:"—" }}</td>
-              <td class="num">{{ item.board_rev|default:"—" }}</td>
-              <td class="pn">{{ item.bom_rev|default:"—" }}</td>
-              <td class="pn">{{ item.imported_at|date:"d.m.Y"|default:"—" }}</td>
-              <td class="desc">
-                {% comment %}
-                  Ход работ и соответствия номеров: на карточке ревизии они
-                  стоят отдельными строками, здесь собраны в одну ячейку —
-                  десять колонок ради полей, которые чаще пусты, растянули бы
-                  таблицу на два экрана. Пустые пропускаются, подписи берутся
-                  из самих полей (BoardRevision.extra_facts).
-                {% endcomment %}
-                {% if item.extra_facts %}
-                  <dl class="rowfacts">
-                    {% for label, value in item.extra_facts %}
-                      <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
-                    {% endfor %}
-                  </dl>
-                {% else %}—{% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <div class="empty">
-      <h2>Ревизий ещё нет</h2>
-      <p class="muted">Плата заведена, но ни один BOM не загружен.</p>
-      {% if can_edit_boards %}
-        <a class="btn" href="{% url 'boards:revision-create' board.pk %}">Добавить ревизию</a>
-        <a class="btn btn--primary" href="{% url 'boards:import' %}">Загрузить BOM</a>
-      {% endif %}
-    </div>
-  {% endif %}
 </div>
 
+<div class="panel">
+  {% partialdef panel inline %}
+    {% include "boards/_listpanel.html" with heading="ревизии платы" count_forms="ревизия,ревизии,ревизий" kind="revisions" %}
+  {% endpartialdef %}
 </div>
+{% if htmx_enabled %}
+  <aside class="panel preview" id="list-preview" hx-sync="this:replace"
+         aria-label="Краткая карточка ревизии" aria-live="polite">
+    <p class="preview__note muted">Выберите ревизию в списке — здесь появится
+      её краткая карточка. Стрелки <kbd>↑</kbd> <kbd>↓</kbd> переключают соседние строки.</p>
+  </aside>
+{% endif %}
+</div>
+
+{% comment %}
+  Краткая карточка платы — панель справа от списка плат (list.html).
+  Не inline: в самой карточке она не выводится, вид отдаёт её отдельно
+  (boards/views.py, _board_preview). Лежит здесь, рядом с карточкой: то,
+  что она показывает, и подписи к нему должны меняться вместе.
+
+  Высота не прыгает от строки к строке: снимки сверху и снизу или
+  заглушки того же размера, наименование и назначение — ровно в три
+  строки.
+{% endcomment %}
+{% partialdef preview %}
+  <div class="preview__title">
+    <a class="mono" href="{{ board.get_absolute_url }}">{{ board.base_pn|cell }}</a>
+  </div>
+  {% include "boards/_preview_shots.html" with top=board.photo_top bottom=board.photo_bottom subject=board.base_pn %}
+  <p class="leadtext" title="{{ board.name }}">
+    <span class="preview__clamp">{{ board.name|cell }}</span></p>
+  <dl class="specs">
+    <div><dt>Тип платы</dt><dd>{{ board.get_board_type_display|default:"—" }}</dd></div>
+    <div><dt>Разработчик</dt><dd>{{ board.developer|cell }}</dd></div>
+    <div><dt>Назначение</dt>
+      <dd title="{{ board.purpose }}"><span class="preview__clamp">{{ board.purpose|cell }}</span></dd></div>
+    <div><dt>Текущая ревизия</dt>
+      <dd>{% if current %}<a class="mono" href="{{ current.get_absolute_url }}">{{ current.oy_pn|default:current.label }}</a>{% else %}—{% endif %}</dd></div>
+    <div><dt>Ревизий</dt><dd>{{ revision_total }}</dd></div>
+    <div><dt>Обновлено</dt><dd>{{ board.imported_at|date:"d.m.Y" }}</dd></div>
+  </dl>
+  <div class="preview__actions">
+    <a class="btn btn--primary" href="{{ board.get_absolute_url }}">Открыть карточку</a>
+    {% if current %}
+      <a class="btn" href="{% url 'boards:bom' board.pk current.number %}">Состав BOM</a>
+    {% endif %}
+    {% if can_edit_boards %}
+      <a class="btn" href="{% url 'boards:edit' board.pk %}">Редактировать</a>
+    {% endif %}
+  </div>
+{% endpartialdef %}
 {% endblock %}

@@ -9,7 +9,13 @@ from django.test import SimpleTestCase
 
 from ..export import EXPORT_LABELS, csv_response, export_stamp
 from ..matching import is_dash, is_placeholder, normalize, usable
-from ..querystring import sort_state, toggle_sort, with_page, with_params
+from ..querystring import (
+    reset_filters,
+    sort_state,
+    toggle_sort,
+    with_page,
+    with_params,
+)
 from ..registry import (
     CATEGORIES,
     MAIN_CATEGORIES,
@@ -117,6 +123,84 @@ class RegistryTests(SimpleTestCase):
 
 
 
+class ColumnWidthTests(SimpleTestCase):
+    """Колонки списка постоянной ширины (COLUMN_CHARS, list.html, app.css)."""
+
+    def test_width_follows_the_data(self):
+        from ..registry import COLUMN_CHARS, DEFAULT_COLUMN_CHARS, column_chars
+
+        self.assertEqual(column_chars("vendor_pn", "Vendor PN"),
+                         COLUMN_CHARS["vendor_pn"])
+        # параметр группы без своей записи — общая ширина
+        self.assertEqual(column_chars("value", "Value"), DEFAULT_COLUMN_CHARS)
+
+    def test_column_is_not_narrower_than_a_header_word(self):
+        # заголовок переносится по пробелам: слово длиннее колонки вылезло
+        # бы на соседнюю
+        from ..registry import SORT_MARK_CHARS, column_chars
+
+        self.assertEqual(column_chars("frequency", "Frequency-tolerance"),
+                         len("Frequency-tolerance") + SORT_MARK_CHARS)
+
+    def test_header_wraps_by_words(self):
+        from ..registry import header_lines
+
+        self.assertEqual(header_lines("Output Current, A", 8), 3)
+        self.assertEqual(header_lines("Output Current, A", 10), 2)
+        self.assertEqual(header_lines("Package", 7), 1)
+
+    def test_column_widens_so_the_header_fits_two_lines(self):
+        # «Output Current, A» в общие 10 знаков встал бы в три строки —
+        # выше шапки
+        from ..registry import (
+            DEFAULT_COLUMN_CHARS,
+            HEADER_LINES,
+            SORT_MARK_CHARS,
+            column_chars,
+            header_lines,
+        )
+
+        chars = column_chars("output_current_a", "Output Current, A")
+        self.assertGreater(chars, DEFAULT_COLUMN_CHARS)
+        self.assertLessEqual(header_lines("Output Current, A", chars - SORT_MARK_CHARS),
+                             HEADER_LINES)
+
+    def test_no_list_header_is_taller_than_the_head(self):
+        from ..registry import HEADER_LINES, SORT_MARK_CHARS, header_lines
+
+        for category in CATEGORIES.values():
+            for (name, label), chars in zip(category.verbose_columns,
+                                            category.column_widths, strict=True):
+                if chars is None:
+                    continue
+                with self.subTest(table=category.table, column=name):
+                    self.assertLessEqual(
+                        header_lines(label, chars - SORT_MARK_CHARS), HEADER_LINES)
+
+    def test_every_list_has_widths_for_all_columns(self):
+        from ..registry import FLEX_COLUMN
+
+        for category in CATEGORIES.values():
+            with self.subTest(table=category.table):
+                self.assertEqual(len(category.column_widths), len(category.columns))
+                flex = [name for name, width in
+                        zip(category.columns, category.column_widths, strict=True)
+                        if width is None]
+                # остаток ширины уходит ровно в одну колонку — описание
+                self.assertEqual(flex, [FLEX_COLUMN])
+                self.assertEqual(category.fixed_count, len(category.columns) - 1)
+                self.assertEqual(category.fixed_chars,
+                                 sum(w for w in category.column_widths if w))
+
+    def test_list_template_uses_the_widths(self):
+        from django.template.loader import get_template
+
+        source = get_template("components/list.html").template.source
+        self.assertIn("<colgroup>", source)
+        self.assertIn("category.column_widths", source)
+        self.assertIn("--fixed-chars: {{ category.fixed_chars }}", source)
+
+
 class PhysicalFieldsTests(SimpleTestCase):
     """Габариты и температура вынесены в общий класс — кроме PCB, где их нет."""
 
@@ -213,6 +297,39 @@ class QueryStringTests(SimpleTestCase):
         params = query("sort=vendor&dir=desc")
         self.assertEqual(sort_state(params, "vendor"), "desc")
         self.assertEqual(sort_state(params, "package"), "")
+
+    def test_reset_drops_filters_but_keeps_the_view(self):
+        # сброс убирает отбор, а сортировку и число строк оставляет: это вид
+        # списка, после сброса он не должен становиться другим
+        result = reset_filters(query(
+            "q=abc&vendor=TDK|Yageo&page=3&sort=vendor&dir=desc&per_page=50"))
+        self.assertEqual(result, "?sort=vendor&dir=desc&per_page=50")
+
+    def test_reset_of_bare_filters_is_the_bare_list(self):
+        self.assertEqual(reset_filters(query("q=abc&vendor=TDK")), "")
+        self.assertEqual(reset_filters(query("sort=&per_page=")), "")
+
+
+class FilteringTests(SimpleTestCase):
+    """Когда показывать «Сбросить» (listing.filtering)."""
+
+    def setUp(self):
+        from ..registry import CATEGORIES
+        self.category = CATEGORIES["diode"]
+
+    def filtering(self, text):
+        from ..listing import filtering
+        return filtering(query(text), self.category)
+
+    def test_search_and_chosen_values_narrow_the_list(self):
+        self.assertTrue(self.filtering("q=smbj"))
+        self.assertTrue(self.filtering("vendor=Vishay"))
+
+    def test_view_parameters_alone_do_not(self):
+        # сняв последнюю галочку, человек остаётся с числом строк и
+        # сортировкой в адресе — кнопка сброса над несуженным списком лишняя
+        self.assertFalse(self.filtering("per_page=50&sort=vendor&dir=desc&page=2"))
+        self.assertFalse(self.filtering("q=++&vendor="))
 
 
 

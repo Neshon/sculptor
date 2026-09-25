@@ -7,6 +7,8 @@ app_name = "components"
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
     path("search/", search_views.global_search, name="search"),
+    # до маршрута со слагом, иначе «changelog» приняли бы за группу
+    path("changelog/", views.changelog, name="changelog"),
     path("duplicates/", views.duplicates, name="duplicates"),
     path("links/import/", link_views.link_import, name="link-import"),
     path("links/add/", link_views.link_add, name="link-add"),

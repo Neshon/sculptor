@@ -30,16 +30,15 @@
     {% if job.is_active %}
       <div class="alert" role="status">
         {% if job.looks_stuck %}
-          <b>Картинка давно ждёт очереди.</b>
+          <b>Картинка давно ждёт в очереди.</b>
           Модель {{ job.source_name|default:"" }} принята {{ job.created|date:"d.m.Y H:i" }},
-          но рендер так и не начался — похоже, обработчик задач не запущен
-          (<span class="mono">manage.py db_worker</span>).
+          но рендер так и не начался. Сообщите администратору.
         {% elif job.looks_crashed %}
           <b>Рендер не закончился.</b>
           Модель {{ job.source_name|default:"" }} начали рисовать
           {{ job.created|date:"d.m.Y H:i" }}, но процесс, похоже, упал — так бывает
-          на повреждённом файле. Загрузите модель ещё раз; подробности — в
-          <span class="mono">step_queue/render.log</span>.
+          на повреждённом файле. Загрузите модель ещё раз; если не поможет —
+          сообщите администратору.
         {% else %}
           <b>Картинка готовится.</b>
           Модель {{ job.source_name|default:"" }} {{ job.get_status_display }}

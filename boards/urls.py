@@ -36,5 +36,10 @@ urlpatterns = [
          name="item-edit"),
     path("<int:pk>/rev/<int:number>/items/<int:item_pk>/delete/",
          views.item_delete, name="item-delete"),
+    # Подсказки для строк без пары и связь по подсказке
+    path("<int:pk>/rev/<int:number>/items/hints/", views.item_hints,
+         name="item-hints"),
+    path("<int:pk>/rev/<int:number>/items/<int:item_pk>/link/",
+         views.item_link, name="item-link"),
     path("<int:pk>/delete/", views.board_delete, name="delete"),
 ]

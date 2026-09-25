@@ -83,7 +83,7 @@ def link_add(request):
 
     if "tracker_url" not in category.field_names:
         return answer(False, f"В таблице {category.table} нет колонки "
-                             f"«Tracker URL» — выполните sql/add_tracker_url.sql.")
+                             f"«Tracker URL» — сообщите администратору.")
 
     previous = usable(obj.tracker_url)
     if previous == url:

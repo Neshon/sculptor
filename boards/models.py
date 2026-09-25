@@ -214,9 +214,9 @@ class Board(models.Model):
     # Предпросмотр в карточке: как плата выглядит сверху и снизу. В базе
     # хранится путь, сам файл лежит в MEDIA_ROOT и раздаётся nginx
     photo_top = models.ImageField(upload_to=images.upload_top, blank=True,
-                                  verbose_name="Изображение — Top side")
+                                  verbose_name="Изображение — вид сверху")
     photo_bottom = models.ImageField(upload_to=images.upload_bottom, blank=True,
-                                     verbose_name="Изображение — Bottom side")
+                                     verbose_name="Изображение — вид снизу")
 
     class Meta:
         ordering = ("base_pn",)
@@ -333,7 +333,7 @@ class BoardRevision(BomHeader, models.Model):
     number = models.PositiveIntegerField(verbose_name="№")
     # номер целиком и разобранные из него ревизии платы и BOM
     oy_pn = models.CharField(max_length=128, blank=True, default="",
-                             verbose_name="OY P/N")
+                             verbose_name="OY PN")
     board_rev = models.CharField(max_length=16, blank=True, default="",
                                  verbose_name="Rev")
     bom_rev = models.CharField(max_length=8, blank=True, default="",
@@ -438,10 +438,10 @@ class BoardRevision(BomHeader, models.Model):
     # карточек Confluence — они вели кто куда и картинку показать не могли,
     # поэтому после появления загрузки были убраны (0014).
     photo_top = models.ImageField(upload_to=images.revision_top, blank=True,
-                                  verbose_name="Изображение — Top side")
+                                  verbose_name="Изображение — вид сверху")
     photo_bottom = models.ImageField(upload_to=images.revision_bottom,
                                      blank=True,
-                                     verbose_name="Изображение — Bottom side")
+                                     verbose_name="Изображение — вид снизу")
 
     # Ответы чек-листов: {группа: {название документа: {status, comment, url}}}.
     # Раньше это были записи ChecklistItem, по два с лишним десятка на
@@ -567,7 +567,7 @@ class BoardItem(ComponentRefMixin, models.Model):
                             verbose_name="Тип строки")
 
     vendor_pn = models.CharField(max_length=255, blank=True, default="",
-                                 verbose_name="Vendor P/N")
+                                 verbose_name="Vendor PN")
     vendor = models.CharField(max_length=255, blank=True, default="",
                               verbose_name="Vendor")
     country = models.CharField(max_length=128, blank=True, default="",
@@ -575,9 +575,9 @@ class BoardItem(ComponentRefMixin, models.Model):
     oy_id = models.CharField(max_length=128, blank=True, default="",
                              verbose_name="OY ID")
     oy_pn = models.CharField(max_length=255, blank=True, default="",
-                             verbose_name="OY P/N")
+                             verbose_name="OY PN")
     gbt_pn = models.CharField(max_length=255, blank=True, default="",
-                              verbose_name="GBT P/N")
+                              verbose_name="GBT PN")
     group = models.CharField(max_length=128, blank=True, default="",
                              verbose_name="Group")
     subgroup = models.CharField(max_length=128, blank=True, default="",

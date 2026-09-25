@@ -16,7 +16,7 @@ class UsersConfig(AppConfig):
             user_logged_out,
             user_login_failed,
         )
-        from django.db.models.signals import m2m_changed
+        from django.db.models.signals import m2m_changed, post_save
 
         from . import access
         from .models import User
@@ -25,6 +25,8 @@ class UsersConfig(AppConfig):
         user_login_failed.connect(access.on_login_failed,
                                   dispatch_uid="access-login-failed")
         user_logged_out.connect(access.on_logout, dispatch_uid="access-logout")
+        post_save.connect(access.on_user_saved, sender=User,
+                          dispatch_uid="access-user-created")
         m2m_changed.connect(access.on_groups_changed,
                             sender=User.groups.through,
                             dispatch_uid="access-groups")

@@ -33,6 +33,18 @@ def is_htmx(request):
     return request.headers.get(HEADER) == "true"
 
 
+def targets(request, element_id):
+    """Вставит ли HTMX ответ в элемент с этим id (заголовок ``HX-Target``).
+
+    Один адрес может отдавать разные куски — смотря куда их просят:
+    карточка компонента открывается и страницей, и краткой панелью рядом
+    со списком. Ответы тогда различаются ещё и этим заголовком — вид должен
+    добавить его в ``Vary``, иначе браузер может подставить из кэша не тот
+    кусок.
+    """
+    return is_htmx(request) and request.headers.get("HX-Target") == element_id
+
+
 class HtmxMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response

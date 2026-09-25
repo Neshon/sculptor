@@ -5,25 +5,30 @@
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">библиотека компонентов</div>
   <div class="legend__row">
     <h1>Журнал изменений</h1>
     <span class="legend__count" id="list-count">{{ total|plural:"запись,записи,записей" }}</span>
   </div>
 </div>
 
-<div class="panel">
-  {% comment %}
-    Панель устроена так же, как у списка компонентов (list.html, там
-    подробности): фильтры с галочками применяются сразу, без кнопки, а с
-    HTMX вместо страницы приходит фрагмент panel ("changes.html#panel",
-    см. change_log). Страницы меняют только строки и номера страниц, число
-    записей в шапке подменяется по id (hx-swap-oob).
+{% comment %}
+  Страница устроена как список компонентов (list.html, там подробности):
+  таблица слева, краткая версия выбранной правки справа (#list-preview),
+  фильтры с галочками применяются сразу, окошко таблицы — всегда в 25
+  строк (rows.js), число строк на странице — внизу, у переключателя
+  страниц, заголовки колонок сортируют. Разойдись они — журнал и список
+  выглядели бы как два разных сайта.
 
-    Даты применяются сразу, как и списки (data-autosubmit): поле с
-    календарём (date.js) отдаёт в форму только целую дату, набранную или
-    выбранную, — промежуточных значений вроде года 0002 у него нет.
-  {% endcomment %}
+  С HTMX вместо страницы приходит фрагмент panel ("changes.html#panel",
+  см. change_log). Страницы меняют только строки и номера страниц, число
+  записей в шапке подменяется по id (hx-swap-oob).
+
+  Даты применяются сразу, как и списки (data-autosubmit): поле с
+  календарём (date.js) отдаёт в форму только целую дату, набранную или
+  выбранную, — промежуточных значений вроде года 0002 у него нет.
+{% endcomment %}
+<div class="listview">
+<div class="panel">
   {% partialdef panel inline %}
   <div id="list-panel">
   {# id ждёт _page_size.html: селект «строк» отправляет эту форму #}
@@ -42,67 +47,107 @@
            title="По какую дату включительно" aria-label="По какую дату включительно"
            data-autosubmit="1">
 
-    {% if request.GET %}
-      <a class="btn btn--reset" href="{% url 'components:changes' %}">Сбросить</a>
+    {# без выбранной сортировки направление ничего не значит — не шлём оба #}
+    {% if sort %}
+      <input type="hidden" name="sort" value="{{ sort }}">
+      <input type="hidden" name="dir" value="{{ dir }}">
     {% endif %}
-    {% include "_page_size.html" %}
+    {# только пока журнал сужен (history.log_filtering), как у списка компонентов #}
+    {% if filtering %}
+      <a class="btn btn--reset" href="{% url 'components:changes' %}{{ reset_query }}">Сбросить</a>
+    {% endif %}
   </form>
 
-  {% if rows %}
-    <div class="table-wrap">
-      <table class="grid">
-        <thead>
-          <tr>
-            <th style="width:120px">Событие</th>
-            <th style="width:170px">Дата изменения</th>
-            <th style="width:200px">Произвёл изменение</th>
-            <th>Компонент</th>
-            <th style="width:130px">Строк изменилось</th>
+  <div id="list-results">
+  {% comment %}
+    Колонки — в знаках, как у списка компонентов (grid--list в app.css):
+    событие, дата, сотрудник и число полей постоянной ширины, компоненту —
+    остаток. Сумма знаков и число постоянных колонок — в style таблицы.
+    Таблица выводится и на пустом результате — со строкой-образцом для
+    rows.js и сообщением поверх окошка (см. list.html).
+  {% endcomment %}
+  <div class="table-wrap table-wrap--list" data-rows="25">
+    <div class="table-fit">
+    <table class="grid grid--list" style="--fixed-chars: 62; --fixed-count: 4;">
+      <colgroup>
+        <col style="--chars: 14;">
+        <col style="--chars: 16;">
+        <col style="--chars: 22;">
+        <col class="col--flex">
+        <col style="--chars: 10;">
+      </colgroup>
+      <thead{% if htmx_enabled %} hx-boost="true" hx-target="#list-panel" hx-swap="outerHTML" hx-indicator="#list-rows"{% endif %}>
+        <tr>
+          <th><a href="{% sort_url 'action' %}" data-state="{% sort_state 'action' %}">Событие</a></th>
+          {# без выбранной сортировки журнал идёт от новых к старым — стрелка это и показывает #}
+          <th><a href="{% sort_url 'created' %}" data-state="{% if sort %}{% sort_state 'created' %}{% else %}desc{% endif %}">Дата изменения</a></th>
+          <th><a href="{% sort_url 'author' %}" data-state="{% sort_state 'author' %}">Сотрудник</a></th>
+          <th><a href="{% sort_url 'component' %}" data-state="{% sort_state 'component' %}">Компонент</a></th>
+          {# длина списка полей в JSON — в базе по ней не сортируем #}
+          <th>Полей изменено</th>
+        </tr>
+      </thead>
+      <tbody id="list-rows">
+        {% for change in rows %}
+          <tr data-href="{% url 'components:change' change.pk %}">
+            <td><span class="chip chip--event {{ change.chip_class }}">{{ change.short_action }}</span></td>
+            <td class="pn">
+              {# ссылка нужна для клавиатуры и открытия в новой вкладке #}
+              <a class="rowlink" href="{% url 'components:change' change.pk %}">{{ change.created|date:"d.m.Y H:i" }}</a>
+            </td>
+            <td class="desc" title="{{ change.author }}">{{ change.author_display|default:"—" }}</td>
+            <td class="pn">{{ change.component_table }} #{{ change.component_id }}</td>
+            <td class="num">{{ change.fields_count }}</td>
           </tr>
-        </thead>
-        <tbody id="list-rows">
-          {% for change in rows %}
-            <tr data-href="{% url 'components:change' change.pk %}">
-              <td>
-                <span class="chip chip--event {{ change.chip_class }}">{{ change.short_action }}</span>
-              </td>
-              <td class="desc">
-                <a class="rowlink" href="{% url 'components:change' change.pk %}">
-                  {{ change.created|date:"d.m.Y H:i" }}</a>
-              </td>
-              <td class="desc" title="{{ change.author }}">
-                {{ change.author_display|default:"—" }}</td>
-              <td class="pn">{{ change.component_table }} #{{ change.component_id }}</td>
-              <td class="num">{{ change.fields_count }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+        {% empty %}
+          <tr class="rows-probe" aria-hidden="true">
+            <td><span class="chip chip--event">изменён</span></td>
+            <td class="pn"><a class="rowlink" tabindex="-1">{{ None|cell }}</a></td>
+            <td class="desc">{{ None|cell }}</td>
+            <td class="pn">{{ None|cell }}</td>
+            <td class="num">{{ None|cell }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
     </div>
-
-    <div id="list-pager"{% if htmx_enabled %} hx-boost="true" hx-target="#list-rows" hx-select="#list-rows" hx-select-oob="#list-pager" hx-swap="outerHTML" hx-indicator="#list-rows"{% endif %}>
-      {% include "_pagination.html" with only_pages=1 %}
-    </div>
-  {% else %}
-    <div class="empty">
-      <h2>Записей нет</h2>
-      <p class="muted">
-        {% if request.GET %}
-          Под выбранные условия ничего не подошло.
-        {% else %}
-          Журнал ведётся с того момента, как его включили: изменения,
-          сделанные раньше, в него не попали.
+    {% if not rows %}
+      <div class="empty empty--over">
+        <h2>Записей нет</h2>
+        {% if filtering %}
+          <p class="muted">Под выбранные условия ничего не подошло.</p>
+          <a class="btn" href="{% url 'components:changes' %}{{ reset_query }}">Сбросить фильтры</a>
         {% endif %}
-      </p>
-      {% if request.GET %}
-        <a class="btn" href="{% url 'components:changes' %}">Сбросить фильтры</a>
-      {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  {# page нет, только если база не ответила; пустая страница в шаблоне — ложь, отсюда is not None #}
+  {% if page is not None %}
+    <div id="list-pager"{% if htmx_enabled %} hx-boost="true" hx-target="#list-rows" hx-select="#list-rows" hx-select-oob="#list-pager" hx-swap="outerHTML" hx-indicator="#list-rows"{% endif %}>
+      {% include "_pagination.html" with only_pages=1 sizes=1 %}
     </div>
   {% endif %}
+  </div>
   </div>
   {% if htmx_request %}
     <span class="legend__count" id="list-count" hx-swap-oob="true">{{ total|plural:"запись,записи,записей" }}</span>
   {% endif %}
   {% endpartialdef %}
+</div>
+{% comment %}
+  Краткая версия выбранной правки — без ухода с журнала: что поменялось,
+  было и стало. Отдаёт её вид правки (change.html#preview), подгружает
+  preview.js — тот же, что у списка компонентов, со стрелками и первой
+  строкой при открытии. Только при htmx: без него строка ведёт на правку
+  целиком, и панель была бы вечной подсказкой.
+{% endcomment %}
+{% if htmx_enabled %}
+  <aside class="panel preview" id="list-preview" hx-sync="this:replace"
+         aria-label="Краткая версия правки" aria-live="polite">
+    <p class="preview__note muted">Выберите запись в журнале — здесь появится,
+      что именно поменялось. Стрелки <kbd>↑</kbd> <kbd>↓</kbd> переключают соседние строки.</p>
+  </aside>
+{% endif %}
 </div>
 {% endblock %}

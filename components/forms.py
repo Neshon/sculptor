@@ -295,7 +295,7 @@ class ComponentForm(forms.ModelForm):
             current = str(initial or "").strip()
         if current and current not in values:
             field.help_text = (f"В записи было «{current}» — этого значения "
-                               f"нет в справочнике. Сохранение заменит его "
+                               f"нет в выпадающем списке. Сохранение заменит его "
                                f"на выбранное.")
         return forms.Select(choices=[(v, v) for v in values],
                             attrs=dict(widget.attrs))

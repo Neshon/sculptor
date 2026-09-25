@@ -12,7 +12,7 @@
   <div class="section__head">удалить позицию?</div>
   <div class="hints">
     {% if used_in %}
-      <p>Позиция входит в состав других изделий, поэтому удалить её нельзя:</p>
+      <p>Позиция входит в состав других позиций, поэтому удалить её нельзя:</p>
       <div class="filterbar">
         {% for row in used_in %}
           <a class="chip chip--table" href="{{ row.item.get_absolute_url }}">{{ row.item.oy_pn }}</a>

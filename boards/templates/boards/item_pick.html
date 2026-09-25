@@ -13,7 +13,7 @@
   </div>
   <div class="legend__row">
     <h1>Компонент из библиотеки</h1>
-    {% if term %}<span class="legend__count">{{ rows|length }} совпадений</span>{% endif %}
+    {% if term %}<span class="legend__count">{{ rows|length|plural:"совпадение,совпадения,совпадений" }}</span>{% endif %}
     <span class="legend__actions">
       <a class="btn btn--ghost" href="{% url 'boards:bom' board.pk revision.number %}">К составу</a>
     </span>
@@ -23,7 +23,7 @@
 <div class="panel">
   <form class="toolbar" method="get">
     <input class="field field--search" type="search" name="q" value="{{ term }}"
-           placeholder="Vendor P/N, GBT P/N, OY ID, OY P/N, описание, производитель"
+           placeholder="Vendor PN, GBT PN, OY ID, OY PN, описание, производитель"
            autocomplete="off" autofocus>
     <select class="field field--select" name="group">
       <option value="">все группы</option>
@@ -40,19 +40,17 @@
       <span class="filterbar__label">что дальше</span>
       <span class="muted">«Выбрать» откроет строку состава с уже
         заполненными артикулами: останется указать обозначения на плате и
-        количество. Значения переносятся из карточки один раз — состав
-        остаётся документом и от последующих правок в библиотеке не
-        меняется.</span>
+        количество.</span>
     </div>
     <div class="table-wrap">
       <table class="grid">
         <thead>
           <tr>
             <th>Группа</th>
-            <th>Vendor P/N</th>
+            <th>Vendor PN</th>
             <th>Vendor</th>
             <th>OY ID</th>
-            <th>GBT P/N</th>
+            <th>GBT PN</th>
             <th>Description</th>
             <th style="width:92px"></th>
           </tr>
@@ -90,15 +88,14 @@
     <div class="empty">
       <h2>В библиотеке ничего не нашлось</h2>
       <p class="muted">Попробуйте часть артикула без разделителей или имя
-        производителя. Если компонента в библиотеке действительно нет, его
-        сначала заводят в ней — из состава платы он не появится, и ведут
-        библиотеку библиотекари.</p>
+        производителя. Если компонента в библиотеке нет, его сначала заводит
+        библиотекарь.</p>
     </div>
   {% else %}
     <div class="empty">
       <h2>Что ищем?</h2>
       <p class="muted">Поиск идёт по рабочим таблицам и таблицам замен сразу:
-        по Vendor P/N, OY P/N, OY ID, GBT P/N, описанию, производителю,
+        по Vendor PN, OY PN, OY ID, GBT PN, описанию, производителю,
         корпусу и подгруппе.</p>
     </div>
   {% endif %}

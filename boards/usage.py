@@ -2,8 +2,8 @@
 
 Основной путь — ссылка, проставленная при импорте: у строки состава
 хранится таблица и ключ найденной записи. Для составов, загруженных до
-появления ссылок, остаётся запасной поиск по GBT P/N и паре
-Vendor P/N + Vendor.
+появления ссылок, остаётся запасной поиск по GBT PN и паре
+Vendor PN + Vendor.
 """
 
 from django.db.models import F, Q
@@ -53,14 +53,14 @@ def _fallback(component):
         found = BoardItem.objects.filter(component_id__isnull=True,
                                          gbt_pn__iexact=gbt_pn)
         if found.exists():
-            return found, "GBT P/N"
+            return found, "GBT PN"
 
     if vendor_pn and vendor:
         found = BoardItem.objects.filter(
             Q(component_id__isnull=True) & Q(vendor_pn__iexact=vendor_pn)
             & Q(vendor__iexact=vendor))
         if found.exists():
-            return found, "Vendor P/N и Vendor"
+            return found, "Vendor PN и Vendor"
 
     return None, ""
 

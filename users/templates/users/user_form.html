@@ -1,0 +1,77 @@
+{% extends "components/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Новый сотрудник{% endblock %}
+
+{% block content %}
+<div class="legend">
+  <div class="legend__eyebrow">администрирование</div>
+  <div class="legend__row">
+    <h1>Новый сотрудник</h1>
+    {# кнопки стоят вне <form>, поэтому связаны с ней атрибутом form= #}
+    <span class="legend__actions">
+      <a class="btn btn--ghost" href="{% url 'users:roles' %}">Отменить</a>
+      <button class="btn btn--primary" type="submit" form="user-form">Завести сотрудника</button>
+    </span>
+  </div>
+</div>
+
+{% if form.errors %}
+  <div class="alert alert--error" role="alert">
+    <b>Сотрудник не заведён.</b>
+    {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+    <ul>
+      {% for field in form %}
+        {% for error in field.errors %}
+          <li><a href="#{{ field.id_for_label }}">{{ field.label }}: {{ error }}</a></li>
+        {% endfor %}
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{% comment %}
+  Три блока: кто это, чем входит, что может. Пароль — начальный: его
+  задаёт администратор и передаёт сотруднику. Суперпользователь и доступ
+  к админке здесь не выдаются, как и на странице ролей (users/forms.py).
+
+  Роли — галочками с описанием, а не голым списком имён: по названию
+  «Топологи» не понять, что роль даёт только просмотр.
+{% endcomment %}
+<form method="post" novalidate id="user-form">
+  {% csrf_token %}
+  <div class="panel" style="margin-bottom:14px">
+    <div class="section__head">сотрудник</div>
+    <div class="formgrid">
+      {{ form.last_name|as_crispy_field }}
+      {{ form.first_name|as_crispy_field }}
+      {{ form.department|as_crispy_field }}
+      {{ form.position|as_crispy_field }}
+      {{ form.email|as_crispy_field }}
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:14px">
+    <div class="section__head">вход</div>
+    <div class="formgrid">
+      {{ form.username|as_crispy_field }}
+      {{ form.password1|as_crispy_field }}
+      {{ form.password2|as_crispy_field }}
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section__head">роли</div>
+    <div class="rolepick{% if form.roles.errors %} has-error{% endif %}">
+      {% for name, description, checked in form.role_rows %}
+        <label class="rolepick__item">
+          <input type="checkbox" name="{{ form.roles.html_name }}" value="{{ name }}"{% if checked %} checked{% endif %}>
+          <span><span class="rolepick__name">{{ name }}</span> <span class="muted">— {{ description|lower }}</span></span>
+        </label>
+      {% endfor %}
+      {% if form.roles.errors %}<div class="errors" id="{{ form.roles.id_for_label }}">{{ form.roles.errors|striptags }}</div>{% endif %}
+      <div class="hint">{{ form.roles.help_text }} Права администратора и доступ к админке выдаются в админке.</div>
+    </div>
+  </div>
+</form>
+{% endblock %}

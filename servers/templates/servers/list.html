@@ -12,7 +12,7 @@
     <span class="legend__actions">
       {% if can_edit_boards %}
         <a class="btn" href="{% url 'servers:create' %}">Завести позицию</a>
-        <a class="btn btn--primary" href="{% url 'servers:import' %}">Импортировать System BOM</a>
+        <a class="btn btn--primary" href="{% url 'servers:import' %}">Загрузить System BOM</a>
       {% endif %}
     </span>
   </div>
@@ -22,7 +22,7 @@
   <form class="toolbar" method="get">
     <input class="field field--search" type="search" name="q" value="{{ term }}"
            placeholder="Поиск по списку"
-           title="OY P/N, GCT P/N, наименование, децимальный номер"
+           title="OY PN, GCT PN, наименование, децимальный номер"
            autocomplete="off">
     <select class="field field--select" name="kind" data-autosubmit="1"
             data-title="Тип">
@@ -42,10 +42,10 @@
       <table class="grid">
         <thead>
           <tr>
-            <th>OY P/N</th>
+            <th>OY PN</th>
             <th>Тип</th>
             <th>Наименование</th>
-            <th>GCT P/N</th>
+            <th>GCT PN</th>
             <th>Децимальный номер</th>
             <th>Статус</th>
             <th style="width:90px">Строк</th>
@@ -74,7 +74,7 @@
       <p class="muted">Загрузите System BOM — состав сервера разберётся сам,
         а недостающие позиции заведутся заготовками.</p>
       {% if can_edit_boards %}
-        <a class="btn btn--primary" href="{% url 'servers:import' %}">Импортировать System BOM</a>
+        <a class="btn btn--primary" href="{% url 'servers:import' %}">Загрузить System BOM</a>
       {% endif %}
     </div>
   {% endif %}

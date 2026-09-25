@@ -5,7 +5,6 @@
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">ревизия данных</div>
   <div class="legend__row">
     <h1>Дубли</h1>
     {% if total %}
@@ -68,7 +67,7 @@
       </table>
     </div>
 
-    {% include "_pagination.html" with only_pages=1 note="Отчёт читает таблицы целиком — открывайте по необходимости" %}
+    {% include "_pagination.html" with only_pages=1 %}
   {% else %}
     <div class="empty">
       <h2>Дублей не нашлось</h2>

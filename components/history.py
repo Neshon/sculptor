@@ -267,6 +267,46 @@ def log_queryset(filters):
     return found
 
 
+# Сортировка журнала щелчком по заголовку, как у списка компонентов.
+# Компонент — по таблице, затем по ключу: так правки одной записи стоят
+# рядом. «Полей изменено» не сортируется: это длина JSON, и считать её в
+# базе ради сортировки незачем.
+LOG_SORTS = {
+    "action": ("action",),
+    "created": ("created",),
+    "author": ("author",),
+    "component": ("component_table", "component_id"),
+}
+# без выбранной сортировки — новые сверху, как и было
+LOG_DEFAULT_ORDER = ("-created", "-id")
+
+
+def log_order(params):
+    """``(поля для order_by, sort, dir)`` по строке запроса.
+
+    Последним всегда идёт ``-id``: у правок одной секунды и одного автора
+    порядок иначе был бы случайным и менялся бы от страницы к странице.
+    Неизвестная колонка — порядок по умолчанию, а не ошибка.
+    """
+    sort = params.get("sort") or ""
+    if sort not in LOG_SORTS:
+        return LOG_DEFAULT_ORDER, "", "asc"
+    direction = "desc" if params.get("dir") == "desc" else "asc"
+    prefix = "-" if direction == "desc" else ""
+    return ((*(prefix + name for name in LOG_SORTS[sort]), "-id"),
+            sort, direction)
+
+
+def log_filtering(filters):
+    """Сужен ли журнал — выбрано ли событие, сотрудник, таблица или дата.
+
+    Решает, показывать ли «Сбросить» (как ``listing.filtering`` у списка
+    компонентов): число строк и сортировка в адресе — не отбор.
+    """
+    return (any(values_of(filters, key) for key in ("action", "table", "author"))
+            or bool(_date(filters.get("since")) or _date(filters.get("until"))))
+
+
 def _date(value):
     """Дата из поля формы (``2026-09-05``) или None."""
     value = (value or "").strip()

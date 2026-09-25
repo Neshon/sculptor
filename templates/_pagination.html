@@ -15,10 +15,13 @@
   only_pages — не показывать «всего N» и выбор числа строк. Нужен там, где
                размер страницы не настраивается или счётчик уже выведен в
                шапке страницы.
+  sizes      — выбор числа строк справа, без «всего N»: вместе с only_pages
+               там, где счётчик уже в шапке, а число строк выбирают внизу
+               (список компонентов).
   note       — короткая приписка справа от навигации.
 
 Выбор числа строк (`_page_size.html`) отправляет форму с id="list-filters",
-поэтому без only_pages фрагмент годится только тем страницам, где такая
+поэтому без only_pages (или с sizes) фрагмент годится только тем страницам, где такая
 форма есть; плюс в контексте нужны `page_sizes` и `per_page`.
 {% endcomment %}
 {% load components_extras %}
@@ -42,6 +45,9 @@
   {% if not only_pages %}
     <span class="pager__spacer"></span>
     <span class="muted">всего {{ page.paginator.count }}</span>
+    {% include "_page_size.html" %}
+  {% elif sizes %}
+    <span class="pager__spacer"></span>
     {% include "_page_size.html" %}
   {% endif %}
 

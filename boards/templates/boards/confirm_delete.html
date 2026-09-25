@@ -16,14 +16,14 @@
     <div><dt>Ревизий</dt><dd>{{ board.revision_count }}</dd></div>
     <div><dt>Строк состава</dt><dd>{{ board.item_count }}</dd></div>
     {% if item %}
-      <div><dt>Позиция в изделиях</dt>
+      <div><dt>Позиция в разделе «Серверы»</dt>
         <dd><a href="{{ item.get_absolute_url }}">{{ item.oy_pn }}</a> — удалится вместе с платой</dd></div>
     {% endif %}
   </dl>
 
   {% if used_in %}
     <div class="hints">
-      <div><b>Удалить нельзя.</b> Плата входит в состав изделий:</div>
+      <div><b>Удалить нельзя.</b> Плата входит в состав позиций раздела «Серверы»:</div>
       <div class="filterbar">
         {% for line in used_in %}
           <a class="chip chip--table" href="{{ line.parent.get_absolute_url }}">{{ line.parent.oy_pn }}</a>
@@ -38,7 +38,7 @@
     <form class="formbar" method="post">
       {% csrf_token %}
       <button class="btn btn--danger" type="submit">Удалить безвозвратно</button>
-      <a class="btn btn--ghost" href="{{ board.get_absolute_url }}">Оставить</a>
+      <a class="btn btn--ghost" href="{{ board.get_absolute_url }}">Отменить</a>
     </form>
   {% endif %}
 </div>

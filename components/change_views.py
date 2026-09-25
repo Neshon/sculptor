@@ -7,13 +7,24 @@
 from django.core.paginator import Paginator
 from django.db import DatabaseError
 from django.shortcuts import get_object_or_404, render
+from django.utils.cache import patch_vary_headers
+
+from config.htmx import targets
 
 from .filter_forms import ChangeFilterForm
-from .history import log_authors, log_queryset, with_authors
+from .history import (
+    log_authors,
+    log_filtering,
+    log_order,
+    log_queryset,
+    with_authors,
+)
 from .listing import PAGE_SIZES, page_size
 from .models import ComponentChange
+from .querystring import reset_filters
 from .refs import resolve
 from .registry import CATEGORIES
+from .views import PREVIEW_TARGET
 
 # ---- история изменений ---------------------------------------------------
 
@@ -31,8 +42,9 @@ def change_log(request):
     """
     filters = request.GET
     per_page = page_size(request)
+    order, sort, direction = log_order(filters)
     try:
-        paginator = Paginator(log_queryset(filters), per_page)
+        paginator = Paginator(log_queryset(filters).order_by(*order), per_page)
         page = paginator.get_page(filters.get("page"))
         rows = with_authors(list(page.object_list))
         total = paginator.count
@@ -60,6 +72,10 @@ def change_log(request):
         "filter_form": filter_form,
         "since": filters.get("since", ""),
         "until": filters.get("until", ""),
+        "sort": sort,
+        "dir": direction,
+        "filtering": log_filtering(filters),
+        "reset_query": reset_filters(filters),
     })
 
 
@@ -76,6 +92,27 @@ def duplicate_matches(items, lookup=resolve):
         matches.append({**item,
                         "url": found.get_absolute_url() if found else ""})
     return matches
+
+
+# Что краткая версия показывает у заведения и удаления: по этим полям деталь
+# узнают. Остальное там — не «что поменялось», а вся запись целиком, полсотни
+# строк, и в панели за ними не видно, о какой детали речь.
+PREVIEW_IDENTITY = ("vendor_pn", "description")
+
+
+def preview_changes(action, changes):
+    """``(поля для панели, сколько не показано)``.
+
+    У правки — все изменившиеся поля. У заведения и удаления — только
+    Vendor PN и Description: остальное целиком на странице правки. У
+    удалённой записи они ещё и единственное, по чему её узнать: карточки
+    больше нет.
+    """
+    changes = list(changes or [])
+    if action not in (ComponentChange.CREATED, ComponentChange.DELETED):
+        return changes, 0
+    shown = [item for item in changes if item.get("field") in PREVIEW_IDENTITY]
+    return shown, len(changes) - len(shown)
 
 
 def component_change(request, pk):
@@ -96,9 +133,19 @@ def component_change(request, pk):
 
     matches = duplicate_matches(change.changes) if change.is_duplicate else []
 
-    return render(request, "components/change.html", {
+    context = {
         "change": change,
         "category": category,
         "object": obj,
         "matches": matches,
-    })
+    }
+    # Краткая версия — в панель рядом с журналом (changes.html, preview.js),
+    # как карточка компонента рядом с его списком: тот же адрес, что у
+    # строки, поэтому без скрипта строка ведёт на правку целиком
+    if targets(request, PREVIEW_TARGET):
+        context["items"], context["more"] = preview_changes(
+            change.action, change.changes)
+        response = render(request, "components/change.html#preview", context)
+        patch_vary_headers(response, ("HX-Target",))
+        return response
+    return render(request, "components/change.html", context)

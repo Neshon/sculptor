@@ -12,6 +12,9 @@
 * **oy_id** — один OY ID использован дважды внутри одной рабочей таблицы.
   Таблицы замен из этой проверки исключены: там несколько аналогов с общим
   OY ID — это норма, а не дубль.
+* **spelling** — один Vendor PN записан по-разному: «2N7002K-7» и
+  «2N7002K7», «2N7002KTB» и «2N7002KTB_R1». Точная проверка **vendor**
+  такие пары не видит, а это те же дубли, только заведённые разными людьми.
 
 Отчёт читает таблицы целиком, поэтому он не для каждого запроса: вызывать
 его стоит по требованию, как ревизию данных.
@@ -21,6 +24,7 @@ from collections import Counter
 
 from django.db.models import Q
 
+from . import similar
 from .db import unavailable
 from .matching import usable
 from .registry import CATEGORIES, scan
@@ -39,7 +43,14 @@ CHECKS = {
     "oy_id": {
         "title": "Один OY ID в таблице",
         "hint": "Внутри рабочей таблицы OY ID не должен повторяться; "
-                "таблицы замен не проверяются — там общий OY ID это норма",
+                "таблицы замен не проверяются — там общий OY ID — это норма",
+    },
+    "spelling": {
+        "title": "Артикул записан по-разному",
+        "hint": "Vendor PN совпадает, если не считать разделителей и "
+                "регистра, или отличается суффиксом после разделителя "
+                "(«-7-F», «_R1», «/NOPB»). Суффикс бывает и значимым — "
+                "сверьте описание, прежде чем удалять",
     },
 }
 DEFAULT_CHECK = "vendor"
@@ -74,6 +85,8 @@ def find_duplicates(check=DEFAULT_CHECK, term=""):
     """
     check = check if check in CHECKS else DEFAULT_CHECK
     term = (term or "").strip().lower()
+    if check == "spelling":
+        return find_spellings(term)
 
     counts, failed = Counter(), []
     for category, record in scan(FIELDS, failed=failed):
@@ -89,6 +102,78 @@ def find_duplicates(check=DEFAULT_CHECK, term=""):
     for category, record in scan(FIELDS):
         key = _key(check, record, category)
         if key not in repeated:
+            continue
+        record["category"] = category
+        groups.setdefault(key, []).append(record)
+
+    found = [{"key": key, "records": records, "count": len(records),
+              "tables": sorted({r["category"].table for r in records})}
+             for key, records in groups.items()]
+    found.sort(key=lambda group: (-group["count"], group["key"]))
+    return found, failed
+
+
+def spelling_groups(spellings):
+    """Раскладывает написания артикула по группам «одна и та же деталь».
+
+    ``spellings`` — все Vendor PN библиотеки (в нижнем регистре, без
+    повторов). Возвращает ``{написание: ключ группы}`` только для групп,
+    где написаний больше одного: одинаково записанные повторы — это уже
+    проверка **vendor**, здесь им не место.
+
+    Ключ группы — основа артикула без разделителей. Написание попадает в
+    группу своей основы, если та встречается в библиотеке сама по себе:
+    «mmbt3904-7-f» и «mmbt3904-7» идут к «MMBT3904», если есть такая
+    запись. Берётся самая короткая из найденных основ — так все варианты
+    одной детали оказываются в одной группе, а не в цепочке соседних.
+    Отрезается только то, что стоит за разделителем: «BAV99W» — другой
+    корпус, а не «BAV99» с суффиксом (см. ``similar.base_spellings``).
+
+    Чистая функция, без базы: так её проверяют тесты.
+    """
+    cores = {similar.core(spelling) for spelling in spellings}
+    group_of = {}
+    for spelling in spellings:
+        key = similar.core(spelling)
+        if len(key) < similar.MIN_CORE:
+            continue
+        # base_spellings отдаёт основы от длинной к короткой: последняя
+        # найденная — самая короткая
+        for head in similar.base_spellings(spelling):
+            if similar.core(head) in cores:
+                key = similar.core(head)
+        group_of[spelling] = key
+
+    sizes = Counter(group_of.values())
+    return {spelling: key for spelling, key in group_of.items()
+            if sizes[key] > 1}
+
+
+def find_spellings(term=""):
+    """Проверка **spelling**: те же группы, что у :func:`find_duplicates`.
+
+    Проходов два, как и там. Первый собирает только написания артикулов —
+    строки, а не записи; второй берёт записи лишь тех написаний, у которых
+    нашлась пара.
+    """
+    wanted = similar.core(term)
+    spellings, failed = set(), []
+    for _, record in scan(("id", "vendor_pn"), failed=failed):
+        vendor_pn = usable(record.get("vendor_pn")).lower()
+        if vendor_pn:
+            spellings.add(vendor_pn)
+
+    group_of = spelling_groups(spellings)
+    if wanted:
+        group_of = {spelling: key for spelling, key in group_of.items()
+                    if wanted in key}
+    if not group_of:
+        return [], failed
+
+    groups = {}
+    for category, record in scan(FIELDS):
+        key = group_of.get(usable(record.get("vendor_pn")).lower())
+        if key is None:
             continue
         record["category"] = category
         groups.setdefault(key, []).append(record)

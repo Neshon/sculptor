@@ -1,11 +1,11 @@
 {% extends "components/base.html" %}
 {% load crispy_forms_tags %}
 
-{% block title %}Импорт System BOM · Серверы{% endblock %}
+{% block title %}Загрузка System BOM · Серверы{% endblock %}
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">импорт состава</div>
+  <div class="legend__eyebrow">загрузка состава</div>
   <div class="legend__row">
     <h1>System BOM</h1>
     <span class="legend__actions">
@@ -24,9 +24,9 @@
       {% endfor %}
     </div>
     <div class="hints muted">
-      Партномер изделия берётся из первой строки файла. Позиции, которых
+      OY PN позиции берётся из первой строки файла. Позиции, которых
       ещё нет, заводятся заготовками — карточку можно дополнить позже.
-      Строки, добавленные руками, повторный импорт не трогает.
+      Строки, добавленные вручную, повторная загрузка не трогает.
     </div>
   </div>
 </form>

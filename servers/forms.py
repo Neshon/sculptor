@@ -83,7 +83,7 @@ class SystemBomUploadForm(forms.Form):
                   "Mechanics, Other")
     replace = forms.BooleanField(
         required=False, initial=True, label="Заменить прежний импорт",
-        help_text="Строки, заведённые руками, остаются на месте в любом случае",
+        help_text="Строки, добавленные вручную, остаются на месте в любом случае",
         widget=forms.CheckboxInput(attrs={"class": "checkbox"}))
 
     def clean_file(self):

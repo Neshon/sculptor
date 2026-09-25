@@ -206,3 +206,86 @@ class ImageChangeTests(SimpleTestCase):
         from ..history import _username
 
         self.assertEqual(_username("ivanov"), "ivanov")
+
+
+class ChangeLogViewTests(SimpleTestCase):
+    """Журнал устроен как список компонентов: сортировка, сброс, панель."""
+
+    @staticmethod
+    def order(query):
+        from ..history import log_order
+
+        return log_order(QueryDict(query))
+
+    def test_default_is_newest_first(self):
+        self.assertEqual(self.order(""), (("-created", "-id"), "", "asc"))
+
+    def test_sorting_by_column(self):
+        self.assertEqual(self.order("sort=author&dir=desc"),
+                         (("-author", "-id"), "author", "desc"))
+        # правки одной записи — рядом: таблица, затем ключ
+        self.assertEqual(self.order("sort=component")[0],
+                         ("component_table", "component_id", "-id"))
+
+    def test_unknown_column_falls_back(self):
+        # по длине JSON и по чужому полю не сортируем — порядок по умолчанию
+        self.assertEqual(self.order("sort=changes&dir=desc")[1], "")
+
+    def test_reset_only_while_filtered(self):
+        from ..history import log_filtering
+
+        for query in ("action=created", "author=ivanov", "table=RESISTOR",
+                      "since=2026-09-01", "until=2026-09-05"):
+            with self.subTest(query=query):
+                self.assertTrue(log_filtering(QueryDict(query)))
+        # число строк, сортировка и неразборчивая дата — не отбор
+        self.assertFalse(log_filtering(QueryDict(
+            "per_page=50&sort=author&dir=desc&page=2&since=0002-")))
+
+    def test_preview_fragment_exists(self):
+        # вид правки отдаёт его панели рядом с журналом; пропади он —
+        # панель получила бы целую страницу правки
+        from django.template.loader import get_template
+
+        get_template("components/change.html#preview")
+
+    def test_journal_has_the_preview_panel(self):
+        from django.template.loader import get_template
+
+        from ..views import PREVIEW_TARGET
+
+        source = get_template("components/changes.html").template.source
+        self.assertIn(f'id="{PREVIEW_TARGET}"', source)
+        self.assertIn('data-rows="25"', source)
+        self.assertIn("sizes=1", source)
+        # пустая страница в шаблоне — ложь: «{% if page %}» прятало
+        # переключатель страниц как раз на пустом результате фильтра
+        self.assertNotIn("{% if page %}", source)
+
+
+class PreviewChangesTests(SimpleTestCase):
+    """Что краткая версия правки показывает (change_views.preview_changes)."""
+
+    CHANGES = ({"field": "vendor_pn", "label": "Vendor PN", "old": "", "new": "X1"},
+               {"field": "value", "label": "Value", "old": "", "new": "10k"},
+               {"field": "description", "label": "Description", "old": "", "new": "R"},
+               {"field": "package", "label": "Package", "old": "", "new": "0402"})
+
+    def preview(self, action):
+        from ..change_views import preview_changes
+
+        return preview_changes(action, self.CHANGES)
+
+    def test_edit_shows_every_changed_field(self):
+        shown, more = self.preview("updated")
+        self.assertEqual(len(shown), 4)
+        self.assertEqual(more, 0)
+
+    def test_created_and_deleted_show_only_identity(self):
+        # вся запись целиком в панели заслонила бы, о какой детали речь
+        for action in ("created", "deleted"):
+            with self.subTest(action=action):
+                shown, more = self.preview(action)
+                self.assertEqual([item["field"] for item in shown],
+                                 ["vendor_pn", "description"])
+                self.assertEqual(more, 2)

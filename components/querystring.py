@@ -51,6 +51,21 @@ def with_params(params, **overrides):
     return f"?{encoded}" if encoded else "?"
 
 
+# Что «Сбросить» оставляет: сортировка и число строк — это вид списка, а не
+# отбор. Раньше сброс уводил на голый адрес, и вместе с фильтрами терялись
+# и они — после сброса список заново становился по 25 строк без сортировки.
+KEEP_ON_RESET = ("sort", "dir", "per_page")
+
+
+def reset_filters(params):
+    """Строка запроса без поиска и фильтров: ``?sort=…&per_page=…`` или пусто."""
+    kept = params.copy()
+    for key in list(kept):
+        if key not in KEEP_ON_RESET or not kept.get(key):
+            kept.pop(key)
+    return f"?{kept.urlencode()}" if kept else ""
+
+
 def with_page(params, page):
     """Та же строка запроса, но с другим номером страницы."""
     updated = params.copy()

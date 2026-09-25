@@ -49,7 +49,7 @@ class StepImageForm(forms.Form):
 
     step_file = forms.FileField(
         required=False, label="STEP-файл",
-        help_text="Из модели сделается картинка для карточки. "
+        help_text="Из модели будет построена картинка для карточки. "
                   "Сам файл не сохраняется")
     drop_image = forms.BooleanField(
         required=False,
@@ -172,7 +172,7 @@ def footprint_image(request, slug, pk):
             return back
         if job.status == StepRenderJob.FAILED:
             # остаёмся на странице — можно сразу выбрать другой файл
-            messages.error(request, f"Изображение не сделано: {job.message}")
+            messages.error(request, f"Картинка не построена: {job.message}")
         else:
             messages.info(
                 request,

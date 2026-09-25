@@ -117,7 +117,7 @@ def item_delete(request, pk):
         if item.used_in.exists():
             messages.error(
                 request,
-                "Позиция входит в состав других изделий — сначала уберите её "
+                "Позиция входит в состав других позиций — сначала уберите её "
                 "оттуда.")
             return redirect(item.get_absolute_url())
         number = item.oy_pn

@@ -1,0 +1,115 @@
+{% load components_extras %}
+{% comment %}
+  Панель списка — поиск, фильтры, таблица, страницы. Одна на список плат
+  (list.html) и список ревизий в карточке платы (detail.html) и повторяет
+  панель списка компонентов (components/list.html): там же объяснено, как
+  и почему ходят запросы HTMX. Колонки и фильтры описаны в
+  boards/listing.py и приходят в контексте: table, rows, filter_form.
+
+  Параметры include:
+    list_url     — адрес списка: сюда уходит форма и ведёт «Сбросить»;
+    count_forms  — формы слова для счётчика: «плата,платы,плат»;
+    heading      — заголовок панели. Без него счётчик и выгрузка стоят в
+                   шапке страницы (#list-count, #list-export) и на ответ
+                   HTMX обновляются оттуда (hx-swap-oob), как у компонентов.
+                   С ним — в самой панели, и обновляются вместе с ней;
+    kind         — boards или revisions: что сказать, когда список пуст.
+{% endcomment %}
+<div id="list-panel">
+  {% if heading %}
+    <div class="section__head">
+      {{ heading }} · <span id="list-count">{{ paginator.count|plural:count_forms }}</span>
+      <span class="toolbar__spacer"></span>
+      <a class="btn" id="list-export" href="{{ export_url }}">Выгрузить CSV</a>
+    </div>
+  {% endif %}
+  <form class="toolbar" method="get" id="list-filters" data-drop-empty
+        {% if htmx_enabled %}
+          hx-get="{{ list_url }}"
+          hx-target="#list-panel" hx-swap="outerHTML"
+          hx-push-url="true" hx-sync="this:replace"
+          hx-indicator="#list-rows"
+        {% endif %}>
+    {{ filter_form.q }}
+    {% for field in filter_form %}
+      {% if field.name != 'q' %}{{ field }}{% endif %}
+    {% endfor %}
+    {# без выбранной сортировки направление ничего не значит — не шлём оба #}
+    {% if sort %}
+      <input type="hidden" name="sort" value="{{ sort }}">
+      <input type="hidden" name="dir" value="{{ dir }}">
+    {% endif %}
+    {% if request.GET %}
+      <a class="btn btn--reset" href="{{ list_url }}">Сбросить</a>
+    {% endif %}
+    {% include "_page_size.html" %}
+  </form>
+
+  {% if rows %}
+    <div class="table-wrap table-wrap--list" data-rows="25">
+      {# table-fit — контейнер для ширины описания, как в components/list.html #}
+      <div class="table-fit">
+      <table class="grid grid--list"
+             style="--fixed-chars: {{ table.fixed_chars }}; --fixed-count: {{ table.fixed_count }};">
+        <colgroup>
+          {% for column, chars in table.headers %}
+            {% if chars %}<col style="--chars: {{ chars }};">{% else %}<col class="col--flex">{% endif %}
+          {% endfor %}
+        </colgroup>
+        <thead{% if htmx_enabled %} hx-boost="true" hx-target="#list-panel" hx-swap="outerHTML" hx-indicator="#list-rows"{% endif %}>
+          <tr>
+            {% for column, chars in table.headers %}
+              <th><a href="{% sort_url column.name %}" data-state="{% sort_state column.name %}">{{ column.label }}</a></th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody id="list-rows">
+          {% for row in rows %}
+            <tr data-href="{{ row.url }}">
+              {% for column, text in row.cells %}
+                <td class="{{ column.kind }}" title="{{ text }}">
+                  {% if forloop.first %}
+                    {# ссылка нужна для клавиатуры и открытия в новой вкладке #}
+                    <a class="rowlink" href="{{ row.url }}">{{ text|cell }}</a>
+                  {% else %}{{ text|cell }}{% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div id="list-pager"{% if htmx_enabled %} hx-boost="true" hx-target="#list-rows" hx-select="#list-rows" hx-select-oob="#list-pager" hx-swap="outerHTML" hx-indicator="#list-rows"{% endif %}>
+      {% include "_pagination.html" with only_pages=1 %}
+    </div>
+  {% elif request.GET %}
+    <div class="empty">
+      <h2>Ничего не нашлось</h2>
+      <p class="muted">Смягчите фильтры или измените запрос.</p>
+    </div>
+  {% elif kind == "boards" %}
+    <div class="empty">
+      <h2>Плат пока нет</h2>
+      <p class="muted">Загрузите BOM-файл — состав платы разберётся автоматически.</p>
+      {% if can_edit_boards %}
+        <a class="btn" href="{% url 'boards:create' %}">Завести вручную</a>
+        <a class="btn btn--primary" href="{% url 'boards:import' %}">Загрузить BOM</a>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="empty">
+      <h2>Ревизий ещё нет</h2>
+      <p class="muted">Плата заведена, но ни один BOM не загружен.</p>
+      {% if can_edit_boards %}
+        <a class="btn" href="{% url 'boards:revision-create' board.pk %}">Добавить ревизию</a>
+        <a class="btn btn--primary" href="{% url 'boards:import' %}">Загрузить BOM</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% if htmx_request and not heading %}
+  <span class="legend__count" id="list-count" hx-swap-oob="true">{{ paginator.count|plural:count_forms }}</span>
+  <a class="btn" id="list-export" href="{{ export_url }}" hx-swap-oob="true">Выгрузить CSV</a>
+{% endif %}

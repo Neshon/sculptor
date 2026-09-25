@@ -1,0 +1,97 @@
+{% extends "components/base.html" %}
+{% load components_extras %}
+
+{% block title %}Подбор компонентов · {{ revision.oy_pn|default:board.base_pn }}{% endblock %}
+
+{% block content %}
+<div class="legend">
+  <div class="legend__eyebrow">
+    <a href="{% url 'boards:list' %}">Платы</a> ·
+    <a href="{{ board.get_absolute_url }}">{{ board.base_pn }}</a> ·
+    <a href="{{ revision.get_absolute_url }}">{{ revision.oy_pn|default:revision.label }}</a> ·
+    <a href="{% url 'boards:bom' board.pk revision.number %}">состав</a>
+  </div>
+  <div class="legend__row">
+    <h1>Строки без компонента</h1>
+    {% if total %}<span class="legend__count">{{ total|plural:"строка,строки,строк" }}</span>{% endif %}
+    <span class="legend__actions">
+      <a class="btn btn--ghost" href="{% url 'boards:bom' board.pk revision.number %}">К составу</a>
+    </span>
+  </div>
+</div>
+
+<div class="panel">
+  {% if rows %}
+    <div class="filterbar">
+      <span class="filterbar__label">подсказки</span>
+      <span class="muted">Артикул из BOM в библиотеке точно не нашёлся, но
+        похожий есть: тот же артикул у иначе записанного производителя,
+        другой разделитель или суффикс упаковки. Проверьте производителя и
+        описание и свяжите строку, если это та же деталь. Значения строки
+        остаются как в BOM — меняется только связь с карточкой.</span>
+    </div>
+    <div class="table-wrap">
+      <table class="grid">
+        <thead>
+          <tr>
+            <th style="width:56px">I/N</th>
+            <th style="width:52px">M/S</th>
+            <th>Vendor PN</th>
+            <th>Vendor</th>
+            <th>GBT PN</th>
+            <th>Description</th>
+            <th style="width:40%">Похожее в библиотеке</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            {% with item=row.item %}
+              <tr{% if not item.is_main %} class="row--sub"{% endif %}>
+                <td class="num">{{ item.position|default:"" }}</td>
+                <td class="pn">{% if item.is_main %}M{% else %}<span class="chip chip--replacement">S</span>{% endif %}</td>
+                <td class="pn">{{ item.vendor_pn|default:"—" }}</td>
+                <td class="pn">{{ item.vendor|default:"—" }}</td>
+                <td class="pn">{{ item.gbt_pn|default:"—" }}</td>
+                <td class="desc">{{ item.description|default:"—" }}</td>
+                <td class="desc">
+                  {% for hint in row.hints %}
+                    <div class="suggest">
+                      <a class="mono" href="{{ hint.url }}" target="_blank" rel="noopener">{{ hint.pn }}</a>
+                      <span class="chip chip--table">{{ hint.table }}</span>
+                      <span class="muted">{{ hint.field }} · {{ hint.reason }}</span>
+                      {% if can_edit_boards %}
+                        <form class="suggest__add" method="post"
+                              action="{% url 'boards:item-link' board.pk revision.number item.pk %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="component_table" value="{{ hint.table }}">
+                          <input type="hidden" name="component_id" value="{{ hint.pk }}">
+                          <input type="hidden" name="page" value="{{ page.number }}">
+                          <button class="btn btn--small" type="submit">Связать</button>
+                        </form>
+                      {% endif %}
+                    </div>
+                    {% if hint.vendor or hint.description %}
+                      <div class="muted">
+                        {{ hint.vendor|default:"—" }} · {{ hint.description|default:"—"|truncatechars:90 }}
+                      </div>
+                    {% endif %}
+                  {% empty %}
+                    <span class="muted">похожего нет</span>
+                  {% endfor %}
+                </td>
+              </tr>
+            {% endwith %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% include "_pagination.html" with only_pages=1 %}
+  {% else %}
+    <div class="empty">
+      <h2>Все строки связаны</h2>
+      <p class="muted">У каждой строки состава есть карточка в библиотеке.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

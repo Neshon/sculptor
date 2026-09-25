@@ -5,10 +5,6 @@
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">
-    <a href="{% url 'components:list' category.slug %}">{{ category.table }}</a> ·
-    <a href="{{ object.get_absolute_url }}">{{ object.display_title }}</a>
-  </div>
   <div class="legend__row">
     <h1>{% if image %}Изображение{% else %}Добавить изображение{% endif %}</h1>
     {% if footprint %}<span class="chip chip--table">{{ footprint }}</span>{% endif %}

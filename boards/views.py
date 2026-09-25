@@ -9,27 +9,32 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import DatabaseError, transaction
-from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.cache import patch_vary_headers
 
-from components import lookup
+from components import lookup, similar
+from components.listing import PAGE_SIZES, page_size
+from components.querystring import with_params
+from components.views import PREVIEW_TARGET
+from config.htmx import targets
 from users.roles import board_editor
 from components.refs import resolve
-from components.registry import get_category
+from components.registry import category_by_table, get_category
 from servers.boards_bridge import sync_board
 
 from .diff import revision_diff
 from .export import exporter
-from .search import revision_match
-from . import checklists
+from . import checklists, listing
 from .forms import (BoardForm, BoardItemForm, BoardRevisionCreateForm,
-                    BoardRevisionForm, BomUploadForm, ChecklistForm)
+                    BoardRevisionForm, BomUploadForm, ChecklistForm,
+                    ListFilterForm)
 from .importer import BomParseError, parse_bom
-from .linking import MATCH_PICK, build_index, component_values, link_items
-from .models import BOARD_TYPES, Board, BoardItem, BoardRevision
-from .pn import canonical
+from .linking import (MANUAL_MATCHES, MATCH_HINT, MATCH_PICK, build_index,
+                      component_values, hint_details, hints_for,
+                      link_items)
+from .models import Board, BoardItem, BoardRevision
 from .revisions import sort_key
 from .search import items_queryset
 from .storing import store_revision
@@ -62,27 +67,52 @@ def item_search(request):
 
 
 def board_list(request):
-    term = (request.GET.get("q") or "").strip()
-    board_type = (request.GET.get("type") or "").strip()
+    """Список плат — устроен так же, как список компонентов.
 
-    boards = (Board.objects.select_related("current_revision").with_counts())
-    if term:
-        # номер могут набрать и с точками, и без: в базе он хранится без
-        # них, поэтому ищем по обоим написаниям
-        plain = canonical(term)
-        boards = boards.filter(
-            Q(base_pn__icontains=term) | Q(base_pn__icontains=plain)
-            | Q(name__icontains=term)
-            # номера и децимальные живут у ревизий; какие именно поля —
-            # в boards/search.py, список общий с глобальным поиском
-            | revision_match(term)).distinct()
-    if board_type:
-        boards = boards.filter(board_type=board_type)
+    Поиск, фильтры с галочками, сортировка по колонкам, число строк на
+    странице, выгрузка CSV и краткая карточка платы справа. Что за колонки
+    и фильтры — в :mod:`boards.listing`.
+    """
+    table = listing.BOARDS
+    params = request.GET
 
-    page = Paginator(boards, PAGE_SIZE).get_page(request.GET.get("page"))
-    return render(request, "boards/list.html", {
-        "page": page, "term": term,
-        "board_type": board_type, "board_types": BOARD_TYPES})
+    # варианты фильтров — по всем платам, а не по найденным поиском: так
+    # же, как у компонентов, фильтры сужают только друг друга
+    filters = table.filter_choices(Board.objects.all(), params)
+    filter_form = ListFilterForm(
+        params or None, filters=filters,
+        hint="OY PN, наименование, разработчик, номера GCT, децимальный номер")
+
+    boards = table.filtered(
+        table.search(Board.objects.select_related("current_revision")
+                     .with_counts(), params.get("q")),
+        params)
+    boards, sort, direction = table.sorted_queryset(boards, params)
+
+    if params.get("export") == "csv":
+        return table.export(boards.iterator(chunk_size=500), "boards.csv",
+                            request.user.get_username())
+
+    per_page = page_size(request)
+    page = Paginator(boards, per_page).get_page(params.get("page"))
+
+    # HTMX просит только панель — фильтры и таблицу (list.html#panel),
+    # как у списка компонентов
+    template = ("boards/list.html#panel" if getattr(request, "htmx", False)
+                else "boards/list.html")
+    return render(request, template, {
+        "table": table,
+        "rows": table.rows(page.object_list),
+        "page": page,
+        "paginator": page.paginator,
+        "filter_form": filter_form,
+        "sort": sort,
+        "dir": direction,
+        "per_page": per_page,
+        "page_sizes": PAGE_SIZES,
+        "export_url": with_params(params, export="csv"),
+        "list_url": reverse("boards:list"),
+    })
 
 
 def _group_by_position(items):
@@ -106,29 +136,99 @@ def board_detail(request, pk):
     и перечень ревизий, а состав всегда принадлежит конкретной ревизии.
     Показывать на одной странице и то и другое значит смешивать два
     уровня — читающий перестаёт понимать, к чему относится таблица.
+
+    Список ревизий устроен как список компонентов: поиск, фильтры,
+    сортировка, выгрузка и краткая карточка ревизии справа. Ревизий у
+    платы единицы, поэтому отбор идёт в базе, а сортировка — в памяти, по
+    счётчику из номера (см. :mod:`boards.listing`).
+
+    Один адрес отдаёт три ответа: страницу, панель со списком ревизий
+    (запрос HTMX от его фильтров) и краткую карточку платы для списка плат
+    (запрос в панель #list-preview).
     """
     board = get_object_or_404(
         Board.objects.select_related("current_revision"), pk=pk)
-    # порядок ревизий — по счётчику из номера, а не по времени загрузки
-    revisions = sorted(board.revisions.all(), key=sort_key, reverse=True)
 
+    if targets(request, PREVIEW_TARGET):
+        return _board_preview(request, board)
+
+    params = request.GET
     # прежние ссылки вида ?rev=2 ведут теперь на страницу ревизии
-    number = request.GET.get("rev")
+    number = params.get("rev")
     if number:
-        chosen = next((r for r in revisions if str(r.number) == number), None)
+        chosen = (board.revisions.filter(number=number).first()
+                  if number.isdigit() else None)
         if chosen is None:
             raise Http404("Такой ревизии нет")
         return redirect(chosen.get_absolute_url())
 
-    return render(request, "boards/detail.html", {
+    table = listing.REVISIONS
+    revisions = board.revisions.all()
+    filters = table.filter_choices(revisions, params)
+    filter_form = ListFilterForm(
+        params or None, filters=filters,
+        hint="OY PN, наименования PCB и BOM, ревизии, стадия, номера GCT, "
+             "децимальные номера")
+
+    found = list(table.filtered(table.search(revisions, params.get("q")),
+                                params))
+    # «текущая» спрашивает плату у ревизии — она уже прочитана
+    for revision in found:
+        revision.board = board
+    found, sort, direction = table.sorted_list(found, params)
+
+    if params.get("export") == "csv":
+        return table.export(found, f"{board.base_pn or board.pk}-revisions.csv",
+                            request.user.get_username())
+
+    per_page = page_size(request)
+    page = Paginator(found, per_page).get_page(params.get("page"))
+
+    template = ("boards/detail.html#panel" if getattr(request, "htmx", False)
+                else "boards/detail.html")
+    response = render(request, template, {
         "board": board,
-        "revisions": revisions,
         "current": board.current_revision,
+        "revision_total": revisions.count(),
+        "table": table,
+        "rows": table.rows(page.object_list),
+        "page": page,
+        "paginator": page.paginator,
+        "filter_form": filter_form,
+        "sort": sort,
+        "dir": direction,
+        "per_page": per_page,
+        "page_sizes": PAGE_SIZES,
+        "export_url": with_params(params, export="csv"),
+        "list_url": board.get_absolute_url(),
     })
+    # тот же адрес отдаёт и краткую карточку — см. config.htmx.targets
+    patch_vary_headers(response, ("HX-Target",))
+    return response
+
+
+def _board_preview(request, board):
+    """Краткая карточка платы — панель справа от списка плат.
+
+    Только то, что читают за пару секунд: снимок, наименование, тип,
+    назначение и текущая ревизия. Список ревизий и описание целиком —
+    в карточке.
+    """
+    response = render(request, "boards/detail.html#preview", {
+        "board": board,
+        "current": board.current_revision,
+        "revision_total": board.revisions.count(),
+    })
+    patch_vary_headers(response, ("HX-Target",))
+    return response
 
 
 def revision_detail(request, pk, number):
-    """Страница ревизии: своя карточка и свой состав из BOM."""
+    """Страница ревизии: своя карточка и свой состав из BOM.
+
+    Запрос в панель #list-preview — от списка ревизий в карточке платы —
+    получает краткую карточку ревизии.
+    """
     board = get_object_or_404(
         Board.objects.select_related("current_revision"), pk=pk)
     revision = _revision_or_404(board, number)
@@ -136,7 +236,19 @@ def revision_detail(request, pk, number):
     # на ту же страницу уходило три — строки, заполненные и всего.
     done, total = checklists.progress(revision)
 
-    return render(request, "boards/revision.html", {
+    if targets(request, PREVIEW_TARGET):
+        response = render(request, "boards/revision.html#preview", {
+            "board": board,
+            "revision": revision,
+            "item_count": revision.item_count,
+            "position_count": revision.position_count,
+            "checklist_done": done,
+            "checklist_total": total,
+        })
+        patch_vary_headers(response, ("HX-Target",))
+        return response
+
+    response = render(request, "boards/revision.html", {
         "board": board,
         "revision": revision,
         # состав живёт на своей странице, здесь нужны только счётчики
@@ -146,6 +258,8 @@ def revision_detail(request, pk, number):
         "checklist_done": done,
         "checklist_total": total,
     })
+    patch_vary_headers(response, ("HX-Target",))
+    return response
 
 
 def revision_bom(request, pk, number):
@@ -386,7 +500,7 @@ def board_delete(request, pk):
         if used_in:
             messages.error(
                 request,
-                "Плата входит в состав изделий — сначала уберите её оттуда: "
+                "Плата входит в состав позиций раздела «Серверы» — сначала уберите её оттуда: "
                 + ", ".join(sorted({line.parent.oy_pn for line in used_in})))
             return redirect(board.get_absolute_url())
 
@@ -523,8 +637,8 @@ def _picked(request, item):
 
     Для новой строки он приходит из адреса (``?from=слаг&id=ключ``) — туда
     его кладёт страница выбора. Для уже сохранённой берётся её собственная
-    связь, если она поставлена выбором: её карточку показывают рядом с
-    формой. У строки из BOM-файла своей карточки может и не быть — тогда
+    связь, если её поставил человек — выбором или подтвердив подсказку:
+    её карточку показывают рядом с формой. У строки из BOM-файла своей карточки может и не быть — тогда
     показывать нечего, но править строку это не мешает.
 
     ``(None, None)`` значит «компонента нет»: у новой строки это причина
@@ -532,7 +646,7 @@ def _picked(request, item):
     справа. Ошибочный или устаревший ключ в адресе даёт то же самое, а не
     ошибку.
     """
-    if item.pk and item.component_match == MATCH_PICK:
+    if item.pk and item.component_match in MANUAL_MATCHES:
         return resolve(item.component_table, item.component_id)
 
     slug = (request.POST.get("from") or request.GET.get("from") or "").strip()
@@ -545,6 +659,87 @@ def _picked(request, item):
         return category, category.model.objects.filter(pk=pk).first()
     except (DatabaseError, ValueError, TypeError):
         return None, None
+
+
+# Сколько строк без пары разбирать на одной странице подсказок. Подбор
+# идёт по всей библиотеке на каждую строку, и тысяча строк свежего BOM
+# разом — это секунды ожидания; постранично каждая страница быстрая
+HINT_PAGE_SIZE = 50
+
+
+def item_hints(request, pk, number):
+    """Строки состава без пары и похожие на них записи библиотеки.
+
+    Видят страницу все, кто видит состав, — подсказка полезна и тому, кто
+    просто разбирается, что за деталь. Связать строку по подсказке могут
+    только те, кто правит платы.
+    """
+    board = get_object_or_404(Board, pk=pk)
+    revision = _revision_or_404(board, number)
+
+    unlinked = revision.items.filter(component_id__isnull=True)
+    page = Paginator(unlinked, HINT_PAGE_SIZE).get_page(request.GET.get("page"))
+
+    # индекс строится, только если на странице есть что подбирать
+    rows = [{"item": item} for item in page.object_list]
+    if rows:
+        prepared = similar.prepare(similar.library_index())
+        for row in rows:
+            row["hints"] = hints_for(row["item"], prepared)
+        details = hint_details(h for row in rows for h in row["hints"])
+        for row in rows:
+            for hint in row["hints"]:
+                hint.update(details.get((hint["table"], hint["pk"]), {}))
+
+    return render(request, "boards/item_hints.html", {
+        "board": board, "revision": revision,
+        "page": page, "rows": rows, "total": page.paginator.count,
+    })
+
+
+@board_editor
+def item_link(request, pk, number, item_pk):
+    """Связывает строку без пары с записью, которую подсказал подбор.
+
+    Меняется только связь: поля строки остаются такими, как в BOM-файле, —
+    состав это документ, и подсказка его не переписывает. Уже связанную
+    строку здесь не перевязывают: её связь или найдена точно, или указана
+    человеком, и менять её молча из списка подсказок нельзя.
+    """
+    board = get_object_or_404(Board, pk=pk)
+    revision = _revision_or_404(board, number)
+    item = get_object_or_404(BoardItem, pk=item_pk, revision=revision)
+    back = reverse("boards:item-hints", args=[board.pk, revision.number])
+    page = (request.POST.get("page") or "").strip()
+    if page.isdigit():
+        back += "?" + urlencode({"page": page})
+
+    if request.method != "POST":
+        return redirect(back)
+    if item.is_linked:
+        messages.info(request, f"Позиция {item.position} уже связана.")
+        return redirect(back)
+
+    table = (request.POST.get("component_table") or "").strip()
+    category = category_by_table(table)
+    try:
+        component = (category.model.objects.filter(
+            pk=request.POST.get("component_id")).first()
+            if category else None)
+    except (DatabaseError, ValueError, TypeError):
+        component = None
+    if component is None:
+        messages.error(request, "Компонент не найден — возможно, его удалили.")
+        return redirect(back)
+
+    item.component_table = category.table
+    item.component_id = component.pk
+    item.component_match = MATCH_HINT
+    item.save(update_fields=["component_table", "component_id",
+                             "component_match"])
+    messages.success(request, f"Позиция {item.position} связана с "
+                              f"{component.display_title()}.")
+    return redirect(back)
 
 
 @board_editor

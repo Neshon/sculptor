@@ -1,0 +1,56 @@
+{% extends "components/base.html" %}
+
+{% block title %}Что нового · Sculptor{% endblock %}
+
+{% block content %}
+<div class="legend">
+  <div class="legend__row">
+    <h1>Что нового</h1>
+    <span class="legend__count">сейчас v{{ app_version }}</span>
+  </div>
+</div>
+
+{% comment %}
+  Страница и окно показывают одно и то же. Окно (base.html, #changelog)
+  просит у вида только фрагмент body, страница выводит его целиком —
+  вместе со вступлением файла: оно о том, как читать нумерацию, и в окне
+  было бы лишним.
+{% endcomment %}
+<div class="panel">
+  {% if intro %}
+    <div class="changelog changelog--intro">
+      {% for block in intro %}{% include "components/_changelog_block.html" %}{% endfor %}
+    </div>
+  {% endif %}
+  {% partialdef body inline %}
+    <div class="changelog">
+      {% for version in versions %}
+        <section class="changelog__version">
+          <h2 class="changelog__number">
+            v{{ version.number }}
+            {% if version.number == app_version %}<span class="chip chip--table">текущая</span>{% endif %}
+          </h2>
+          {% for section in version.sections %}
+            {% if section.collapsed %}
+              {% comment %}
+                «Обновление» — для того, кто ставит новую версию на сервер,
+                а не для того, кто пользуется сайтом: свёрнуто, чтобы
+                «Ручных шагов нет» не повторялось под каждой версией.
+              {% endcomment %}
+              <details class="changelog__update">
+                <summary>{{ section.title }}</summary>
+                {% for block in section.blocks %}{% include "components/_changelog_block.html" %}{% endfor %}
+              </details>
+            {% else %}
+              {% if section.title %}<h3 class="changelog__section">{{ section.title }}</h3>{% endif %}
+              {% for block in section.blocks %}{% include "components/_changelog_block.html" %}{% endfor %}
+            {% endif %}
+          {% endfor %}
+        </section>
+      {% empty %}
+        <p class="muted">Файл CHANGELOG.md не найден — истории изменений нет.</p>
+      {% endfor %}
+    </div>
+  {% endpartialdef %}
+</div>
+{% endblock %}

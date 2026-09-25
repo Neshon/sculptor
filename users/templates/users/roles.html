@@ -11,6 +11,7 @@
     <span class="legend__count">{{ rows|length|plural:"сотрудник,сотрудника,сотрудников" }}</span>
     <span class="legend__actions">
       <a class="btn" href="{% url 'users:access-log' %}">Журнал доступа</a>
+      <a class="btn btn--primary" href="{% url 'users:create' %}">Добавить сотрудника</a>
     </span>
   </div>
 </div>
@@ -67,7 +68,7 @@
   </div>
   <div class="toolbar">
     <button class="btn btn--primary" type="submit">Сохранить роли</button>
-    <span class="muted">Администратор, доступ к админке и отключение учётной записи — в админке.</span>
+    <span class="muted">Права администратора, доступ к админке и отключение учётной записи выдаются в админке.</span>
   </div>
 </form>
 {% endblock %}

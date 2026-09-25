@@ -103,13 +103,13 @@ class Item(models.Model):
         (RETIRED, "Снята"),
     )
 
-    oy_pn = models.CharField(max_length=255, unique=True, verbose_name="OY P/N")
-    # Второй опознавательный номер. У механики из System BOM своего OY P/N
+    oy_pn = models.CharField(max_length=255, unique=True, verbose_name="OY PN")
+    # Второй опознавательный номер. У механики из System BOM своего OY PN
     # нет вовсе — только номер поставщика, и без этого поля половина такой
     # строки в базу не попадёт. Не уникален: у разных позиций он бывает
     # пустым, а пустых значений в БД может быть сколько угодно
     gct_pn = models.CharField(max_length=255, blank=True, default="",
-                              db_index=True, verbose_name="GCT P/N")
+                              db_index=True, verbose_name="GCT PN")
     name = models.CharField(max_length=255, blank=True, default="",
                             verbose_name="Наименование")
     kind = models.CharField(max_length=16, choices=KINDS, default=ASSEMBLY,
@@ -221,9 +221,9 @@ class BomLine(models.Model):
                               related_name="used_in", verbose_name="Входит")
 
     oy_pn = models.CharField(max_length=255, blank=True, default="",
-                             verbose_name="OY P/N")
+                             verbose_name="OY PN")
     gct_pn = models.CharField(max_length=255, blank=True, default="",
-                              verbose_name="GCT P/N")
+                              verbose_name="GCT PN")
     description = models.TextField(blank=True, default="",
                                    verbose_name="Описание")
 

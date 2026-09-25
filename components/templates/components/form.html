@@ -5,9 +5,6 @@
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">
-    <a href="{% url 'components:list' category.slug %}">{{ category.table }}</a> · {{ category.title }}
-  </div>
   <div class="legend__row">
     <h1>
       {% if object %}Правка: <span class="mono">{{ object.display_title }}</span>
@@ -67,7 +64,7 @@
     <input type="hidden" name="from" value="{{ source.pk }}">
     <div class="alert">
       Замена для <a href="{{ source.get_absolute_url }}" class="mono">{{ source.display_title }}</a>.
-      Параметры списаны с него: подгруппа, корпус, номинал и прочее уже
+      Параметры скопированы с него: подгруппа, корпус, номинал и прочее уже
       заполнены. Vendor PN, Vendor, GBT PN и Datasheet оставлены пустыми —
       у аналога они свои. OY ID <span class="mono">{{ source.oy_id }}</span> берётся у
       основного компонента и не редактируется.
@@ -76,7 +73,7 @@
 
   {% if sample %}
     <div class="alert">
-      Параметры списаны с
+      Параметры скопированы с
       <a href="{{ sample.get_absolute_url }}" class="mono">{{ sample.display_title }}</a>.
       Vendor PN, Vendor, GBT PN и Datasheet намеренно оставлены пустыми —
       первые три нужно заполнить, иначе получится дубль. OY ID назначен новый, следующий по

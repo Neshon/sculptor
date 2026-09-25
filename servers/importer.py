@@ -138,7 +138,7 @@ def read(source):
 
     start, layout = _header(rows)
     if "oy_pn" not in layout and "gct_pn" not in layout:
-        raise ImportError_("В шапке нет ни OY P/N, ни GCT P/N.")
+        raise ImportError_("В шапке нет ни OY PN, ни GCT PN.")
 
     # над шапкой стоят партномер изделия, дата и автор — по строке на каждое
     above = [_text(row[0]) for row in rows[:start] if any(row)]
@@ -148,7 +148,7 @@ def read(source):
         "author": above[2] if len(above) > 2 else "",
     }
     if not header["oy_pn"]:
-        raise ImportError_("В первой строке нет партномера изделия.")
+        raise ImportError_("В первой строке нет OY PN позиции.")
 
     def cell(row, name):
         position = layout.get(name)
@@ -252,7 +252,7 @@ def apply_rows(header, rows, source, replace=True):
             report["items_created"].append(child)
 
         if child is not None and child.pk == parent.pk:
-            report["skipped"].append((row["row"], "строка ссылается на само изделие"))
+            report["skipped"].append((row["row"], "строка ссылается на саму позицию"))
             continue
 
         if row["kind_assumed"]:

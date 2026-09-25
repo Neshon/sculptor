@@ -68,7 +68,7 @@ class BoardItemAdminTests(SimpleTestCase):
 
     def test_match_shown_as_label(self):
         item = BoardItem(component_match="gbt")
-        self.assertEqual(self.model_admin().match(item), "по GBT P/N")
+        self.assertEqual(self.model_admin().match(item), "по GBT PN")
 
     def test_no_adding(self):
         self.assertFalse(self.model_admin().has_add_permission(None))
@@ -220,6 +220,67 @@ class MatchLabelTests(SimpleTestCase):
         result, queryset = self.filtered(None)
         self.assertIs(result, queryset)
         queryset.filter.assert_not_called()
+
+
+class HintTests(SimpleTestCase):
+    """Подсказки для строк BOM без пары — без базы, на готовом индексе."""
+
+    def prepared(self, vendor=(), gbt=()):
+        from components import similar
+
+        def index(pns):
+            return {pn.lower(): {"pn": pn, "targets": [("TRANSISTOR", i)]}
+                    for i, pn in enumerate(pns, 1)}
+        return similar.prepare([index(vendor), index(gbt)])
+
+    def test_suffix_in_the_bom(self):
+        from .linking import hints_for
+        hints = hints_for(BoardItem(vendor_pn="2N7002KTB_R1"),
+                          self.prepared(vendor=["2N7002KTB"]))
+        self.assertEqual(hints[0]["pn"], "2N7002KTB")
+        self.assertEqual(hints[0]["field"], "Vendor PN")
+
+    def test_same_part_number_other_vendor(self):
+        # артикул тот же, а связи нет — значит, производитель записан иначе
+        from components import similar
+
+        from .linking import hints_for
+        hints = hints_for(BoardItem(vendor_pn="LTST-C191KRKT", vendor="Lite-On"),
+                          self.prepared(vendor=["LTST-C191KRKT"]))
+        self.assertEqual(hints[0]["reason"], similar.SAME)
+
+    def test_placeholders_are_not_searched(self):
+        from .linking import hints_for
+        self.assertEqual(hints_for(BoardItem(vendor_pn="---", gbt_pn="?"),
+                                   self.prepared(vendor=["BAV99-7-F"])), [])
+
+    def test_limit(self):
+        from .linking import hints_for
+        library = self.prepared(vendor=["2N7002", "2N7002K", "2N7002KT",
+                                        "2N7002KTB"])
+        hints = hints_for(BoardItem(vendor_pn="2N7002KTB_R1"), library, limit=2)
+        self.assertLessEqual(len(hints), 2)
+
+    def test_neighbouring_value_is_not_offered(self):
+        # 8,25 кОм и 8,2 кОм похожи на 0,9, но это другой резистор
+        from .linking import hints_for
+        self.assertEqual(hints_for(BoardItem(vendor_pn="WR04X8251FTL"),
+                                   self.prepared(vendor=["WR04X8201FTL"])), [])
+
+    def test_label(self):
+        from .linking import MATCH_HINT, match_label
+        self.assertEqual(match_label(MATCH_HINT), "подтверждён по подсказке")
+
+    def test_relink_keeps_confirmed_hint(self):
+        # связь по подсказке ставит человек, когда артикулы не совпали;
+        # пересчёт по артикулам снял бы её первым же запуском
+        from .linking import MATCH_HINT
+        from .management.commands.relink_boards import Command
+        item = BoardItem(vendor_pn="2N7002KTB_R1",
+                         component_table="TRANSISTOR", component_id=1,
+                         component_match=MATCH_HINT)
+        self.assertFalse(Command._relink(item, ({}, {})))
+        self.assertEqual(item.component_id, 1)
 
 
 class NextPositionTests(SimpleTestCase):
@@ -1419,3 +1480,114 @@ class ItemFormTests(SimpleTestCase):
         form = BoardItemForm()
         self.assertTrue(form.fields["references"].help_text)
         self.assertTrue(form.fields["position"].help_text)
+
+
+class ListingTests(SimpleTestCase):
+    """Списки плат и ревизий (boards/listing.py) — без базы.
+
+    Ревизии здесь — несохранённые объекты модели: сортируются они в
+    памяти, и запросов для этого не нужно.
+    """
+
+    def revision(self, board_rev, bom_rev, number, **values):
+        board = Board(pk=1, current_revision_id=values.pop("current", None))
+        revision = BoardRevision(pk=number, board=board, number=number,
+                                 board_rev=board_rev, bom_rev=bom_rev,
+                                 **values)
+        return revision
+
+    def ordered(self, params):
+        from django.http import QueryDict
+
+        from .listing import REVISIONS
+        items = [self.revision("0.2", "C", 1), self.revision("1.02", "A", 2),
+                 self.revision("1.1", "B", 3), self.revision("", "", 4)]
+        found, sort, direction = REVISIONS.sorted_list(items, QueryDict(params))
+        return [r.number for r in found], sort, direction
+
+    def test_default_order_is_by_revision_counter(self):
+        # «1.02» новее «1.1»: порядок по счётчику, новые сверху
+        self.assertEqual(self.ordered("")[0], [2, 3, 1, 4])
+
+    def test_sort_by_revision_column(self):
+        self.assertEqual(self.ordered("sort=board_rev&dir=asc"),
+                         ([1, 3, 2, 4], "board_rev", "asc"))
+
+    def test_empty_values_stay_last_in_reverse(self):
+        # «сначала пустые» при обратной сортировке прятали бы заполненное
+        numbers, _, direction = self.ordered("sort=board_rev&dir=desc")
+        self.assertEqual((numbers[-1], direction), (4, "desc"))
+
+    def test_unknown_column_keeps_default(self):
+        self.assertEqual(self.ordered("sort=nope")[:2], ([2, 3, 1, 4], ""))
+
+    def test_widths_follow_component_rule(self):
+        # правило шапки общее со списком компонентов: слово заголовка
+        # плюс место под стрелку сортировки
+        from .listing import BOARDS, REVISIONS
+        widths = dict(zip([c.name for c in REVISIONS.columns],
+                          REVISIONS.column_widths, strict=True))
+        self.assertIsNone(widths["facts"])
+        self.assertGreaterEqual(widths["approved"], len("Утверждена") + 2)
+        self.assertEqual(BOARDS.fixed_count,
+                         sum(1 for c in BOARDS.columns if c.chars))
+
+    def test_filters_narrow_each_other(self):
+        # фильтр не учитывает свои значения — иначе второе не добавить
+        from django.http import QueryDict
+
+        from .listing import REVISIONS
+        queryset = mock.MagicMock()
+        queryset.filter.return_value = queryset
+        REVISIONS.filtered(queryset, QueryDict("board_rev=0.2|1.0&approved=yes"),
+                           skip="board_rev")
+        queryset.filter.assert_called_once_with(approved__in=[True])
+
+    def test_filter_choices_labels_and_codes(self):
+        from .listing import BOARDS, REVISIONS
+
+        def queryset(values):
+            qs = mock.MagicMock()
+            qs.order_by.return_value.values_list.return_value \
+                .distinct.return_value = values
+            return qs
+
+        board_type = BOARDS.filters[0]
+        self.assertEqual(board_type.choices(queryset(["riser", "", "backplane"])),
+                         [("backplane", "Бэкплейн"), ("riser", "Райзер")])
+        approved = REVISIONS.filters[-1]
+        self.assertEqual(approved.choices(queryset([False])),
+                         [("no", "не утверждена")])
+        board_rev = REVISIONS.filters[0]
+        # прочерк — не значение; ревизии — по счётчику, а не по алфавиту
+        self.assertEqual(board_rev.choices(queryset(["1.1", "---", "1.02", "0.2"])),
+                         [("0.2", "0.2"), ("1.1", "1.1"), ("1.02", "1.02")])
+
+    def test_cells_text(self):
+        from .listing import REVISIONS
+        revision = self.revision("0.2", "C", 7, current=7, approved=True,
+                                 approved_at=datetime.date(2026, 9, 1),
+                                 stage="Опытный образец", gct_pcb="G-1")
+        cells = dict((c.name, text) for c, text in REVISIONS.rows([revision])[0]["cells"])
+        self.assertEqual(cells["current"], "да")
+        self.assertEqual(cells["approved"], "да · 01.09.2026")
+        # стадия стоит своей колонкой и в сведениях не повторяется
+        self.assertEqual(cells["facts"], "Соответствие PCB GCT: G-1")
+
+    def test_export_matches_the_page(self):
+        from .listing import BOARDS
+        board = Board(pk=3, base_pn="HSBP-5S01", name="Бэкплейн",
+                      board_type="backplane")
+        board.revisions_total = 2
+        text = BOARDS.export([board], "boards.csv", "admin") \
+            .content.decode("utf-8-sig")
+        self.assertIn("HSBP-5S01;Бэкплейн;Бэкплейн;;;2;", text)
+        self.assertIn("Exported by;admin", text)
+
+    def test_search_without_term_changes_nothing(self):
+        from .listing import search_boards, search_revisions
+        queryset = mock.Mock()
+        self.assertIs(search_boards(queryset, "  "), queryset)
+        self.assertIs(search_revisions(queryset, None), queryset)
+        queryset.filter.assert_not_called()
+

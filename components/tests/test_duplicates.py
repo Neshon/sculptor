@@ -4,7 +4,14 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
-from ..duplicates import CHECKS, DEFAULT_CHECK, MATCH_RULES, _key, _rule_filter
+from ..duplicates import (
+    CHECKS,
+    DEFAULT_CHECK,
+    MATCH_RULES,
+    _key,
+    _rule_filter,
+    spelling_groups,
+)
 from ..matching import usable
 from ..registry import get_category
 
@@ -125,3 +132,37 @@ class DuplicateMatchesTests(SimpleTestCase):
     def test_empty(self):
         from ..change_views import duplicate_matches
         self.assertEqual(duplicate_matches(None), [])
+
+
+class SpellingGroupTests(SimpleTestCase):
+    """Проверка «артикул записан по-разному» — на готовом наборе написаний."""
+
+    def test_separators_and_case(self):
+        groups = spelling_groups({"2n7002k-7", "2n7002k7"})
+        self.assertEqual(groups, {"2n7002k-7": "2N7002K7",
+                                  "2n7002k7": "2N7002K7"})
+
+    def test_suffix_joins_its_base(self):
+        groups = spelling_groups({"mmbt3904", "mmbt3904-7-f", "mmbt3904-7"})
+        self.assertEqual(set(groups.values()), {"MMBT3904"})
+        self.assertEqual(len(groups), 3)
+
+    def test_glued_suffix_is_another_part(self):
+        # «BAV99W» — другой корпус: без разделителя суффиксом не считается
+        self.assertEqual(spelling_groups({"bav99", "bav99w"}), {})
+
+    def test_lonely_spelling_is_not_reported(self):
+        # у суффикса нет основы в библиотеке — сравнивать не с чем
+        self.assertEqual(spelling_groups({"2n7002ktb_r1", "bav99"}), {})
+
+    def test_domestic_values_are_not_glued(self):
+        # на живой базе так склеивались 5,1 кОм и 51 кОм, 1,1 Ом и 1,1 кОм
+        self.assertEqual(spelling_groups({
+            "р1-12-0,062-5,1 ком±1%-к шкаб.434110.021 ту",
+            "р1-12-0,062-51 ком±1%-к шкаб.434110.021 ту",
+            "р1-12-0,063-1,1 ом±5%«а» шкаб.434110.024 ту",
+            "р1-12-0,063-1,1 ком±5%«а» шкаб.434110.024 ту",
+        }), {})
+
+    def test_check_is_offered(self):
+        self.assertIn("spelling", CHECKS)

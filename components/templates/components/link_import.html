@@ -4,7 +4,6 @@
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">библиотека</div>
   <div class="legend__row">
     <h1>Импорт ссылок</h1>
   </div>
@@ -42,7 +41,7 @@
   <div class="panel">
     <div class="section__head">
       результат ·
-      осталось {{ result.matched|length }} из {{ result.total }}
+      к записи {{ result.matched|length }} из {{ result.total }}
       {% if result.written %} · записано{% else %} · пробный проход{% endif %}
     </div>
     <dl class="specs">
@@ -55,7 +54,7 @@
       {% endif %}
       <div><dt>Компонент найден</dt><dd>{{ result.matched|length }}</dd></div>
       <div><dt>Не найден</dt><dd>{{ result.unmatched|length }}</dd></div>
-      <div><dt>Ссылок к записи</dt><dd>{{ result.links }}</dd></div>
+      <div><dt>Ссылок для записи</dt><dd>{{ result.links }}</dd></div>
       {% if result.written %}
         <div><dt>Проставлено</dt><dd>{{ result.filled }}</dd></div>
         <div><dt>Заменено</dt><dd>{{ result.replaced }}</dd></div>

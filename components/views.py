@@ -11,14 +11,16 @@ from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import DatabaseError
 from django.shortcuts import redirect, render
+from django.utils.cache import patch_vary_headers
 from django.utils.decorators import method_decorator
 from django.utils.text import slugify
 from django.views import View
 
-from boards.stats import bom_coverage
 from boards.usage import find_usages, usage_summary
+from config.htmx import targets
 from users.roles import admin_only, component_editor
 
+from . import changelog as changelog_file
 from .cache import COUNTS_KEY, cached
 from .db import fallback, unavailable
 from .duplicates import CHECKS, DEFAULT_CHECK, find_duplicates
@@ -33,17 +35,29 @@ from .listing import (
     category_or_404,
     fetch,
     filter_choices,
+    filtering,
     page_size,
     sorted_queryset,
 )
 from .matching import usable
 from .models import FootprintImage, StepRenderJob
-from .querystring import with_params
+from .querystring import reset_filters, with_params
 from .registry import MAIN_CATEGORIES, REPLACEMENT_CATEGORIES, counterpart
 from .step import normalize_footprint
 
 RELATED_LIMIT = 50
 DUPLICATE_PAGE_SIZE = 50
+# Панель краткой карточки справа от списка (list.html). По id, куда HTMX
+# вставит ответ, карточка понимает, что её просят панелью, а не страницей
+PREVIEW_TARGET = "list-preview"
+# Поля основного блока, которых в панели нет: их не сверяют, листая
+# список, — страна, примечание, статус и группа у соседних строк почти
+# всегда одинаковые и только удлиняли панель. В карточке они на месте
+PREVIEW_SKIP = frozenset(("country", "notice", "status", "group", "subgroup"))
+# Поля, которые в панели стоят всегда, даже пустые — с прочерком. Панель
+# листают стрелками, и строка, то появляющаяся, то пропадающая, двигала бы
+# всё, что ниже: глаз терял место, где смотреть
+PREVIEW_KEEP = frozenset(("description", "datasheet"))
 
 
 def _read_only_redirect(request, category):
@@ -70,6 +84,19 @@ def _count_rows():
     return rows, failed
 
 
+def changelog(request):
+    """Что нового: CHANGELOG.md.
+
+    Версия в шапке открывает окно и просит у HTMX только его содержимое
+    (changelog.html#body); без HTMX та же ссылка ведёт сюда страницей.
+    """
+    intro, versions = changelog_file.load()
+    template = ("components/changelog.html#body"
+                if getattr(request, "htmx", False)
+                else "components/changelog.html")
+    return render(request, template, {"intro": intro, "versions": versions})
+
+
 def dashboard(request):
     """Стартовая страница: сколько чего лежит в справочнике.
 
@@ -90,8 +117,6 @@ def dashboard(request):
     rows.sort(key=lambda row: -row["count"])
 
     return render(request, "components/dashboard.html", {
-        # насколько состав плат опирается на библиотеку, а не на текст из файла
-        "coverage": bom_coverage(),
         "rows": rows,
         "total": sum(row["count"] for row in rows),
         "failed": failed,
@@ -143,6 +168,8 @@ def component_list(request, slug):
         "per_page": per_page,
         "page_sizes": PAGE_SIZES,
         "export_url": with_params(request.GET, export="csv"),
+        "filtering": filtering(request.GET, category),
+        "reset_query": reset_filters(request.GET),
     })
 
 
@@ -275,6 +302,9 @@ def component_detail(request, slug, pk):
     description, left_fields, right_fields, other_fields = \
         _split_fields(filled)
 
+    if targets(request, PREVIEW_TARGET):
+        return _preview(request, category, obj, *preview_fields(fields))
+
     oy_id = usable(getattr(obj, "oy_id", ""))
     # где этот компонент стоит на платах: по связи из импорта,
     # а если её нет — по артикулам
@@ -314,6 +344,58 @@ def component_detail(request, slug, pk):
         # картинка может как раз готовиться — карточка скажет об этом
         "job": StepRenderJob.latest_for(footprint_of(obj)),
     })
+
+
+def brief_fields(fields):
+    """Поля для краткой карточки: основной блок без :data:`PREVIEW_SKIP`."""
+    return [field for field in fields if field[2] not in PREVIEW_SKIP]
+
+
+def preview_fields(fields):
+    """Что показать в краткой карточке: (описание, поля, сколько ещё в карточке).
+
+    Как в основном блоке карточки, но поля из :data:`PREVIEW_KEEP` остаются
+    и незаполненными. ``fields`` — все поля записи, тройки
+    ``(подпись, значение, имя)``.
+    """
+    shown = [f for f in fields
+             if f[1] not in (None, "") or f[2] in PREVIEW_KEEP]
+    description, left, right, rest = _split_fields(shown)
+    return description, brief_fields(left + right), len(rest)
+
+
+def _preview(request, category, obj, description, fields, more):
+    """Краткая карточка — панель рядом со списком (detail.html#preview).
+
+    Только то, что читают за пару секунд: картинка, описание и опознавательные
+    поля. Применяемость, аналоги и история остаются полной карточке: панель
+    листают строка за строкой, и каждый лишний запрос здесь повторяется на
+    каждой строке списка.
+
+    Картинка — та же, что в карточке, включая соседскую по OY ID: без неё
+    у замен панель всегда была бы пустой, своего посадочного места у них
+    нет. Соседей ищем, только когда своей картинки нет, — у рабочих групп
+    это редкость, и листание по ним лишних запросов не получает.
+    """
+    image = FootprintImage.for_footprint(footprint_of(obj))
+    borrowed_from = None
+    oy_id = usable(getattr(obj, "oy_id", ""))
+    if image is None and oy_id:
+        image, borrowed_from = _borrowed_image(
+            _related_by_oy_id(category, obj, oy_id))
+
+    response = render(request, "components/detail.html#preview", {
+        "category": category,
+        "object": obj,
+        "description": description,
+        "fields": fields,
+        "more": more,
+        "image": image,
+        "borrowed_from": borrowed_from,
+    })
+    # тот же адрес отдаёт и страницу карточки — см. config.htmx.targets
+    patch_vary_headers(response, ("HX-Target",))
+    return response
 
 
 # ---- создание и правка ---------------------------------------------------
@@ -480,8 +562,9 @@ def component_delete(request, slug, pk):
             if board_rows:
                 messages.warning(
                     request,
-                    f"{board_rows} строк в составах плат остались без связи "
-                    f"с библиотекой — теперь они показывают данные из файла.")
+                    f"Строк в составах плат осталось без связи с "
+                    f"библиотекой: {board_rows}. Теперь они показывают данные "
+                    f"из файла.")
             messages.success(request, f"Компонент {title} удалён.")
             return redirect("components:list", slug=slug)
 

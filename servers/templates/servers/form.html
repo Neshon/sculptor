@@ -27,7 +27,7 @@
   </div>
   {% if item %}
     <p class="formnote">
-      Удалить позицию: <a href="{% url 'servers:delete' item.pk %}">на страницу удаления</a>.
+      <a href="{% url 'servers:delete' item.pk %}">Удалить позицию</a>
     </p>
   {% endif %}
 </form>

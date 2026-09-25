@@ -12,7 +12,7 @@
 
 from django.core.management.base import BaseCommand
 
-from boards.linking import MATCH_PICK, build_index, resolve
+from boards.linking import MANUAL_MATCHES, build_index, resolve
 from boards.models import BoardItem
 
 BATCH = 500
@@ -67,12 +67,13 @@ class Command(BaseCommand):
     def _relink(item, index):
         """Проставляет строке новую связь. True, если она изменилась.
 
-        Строку, компонент которой выбрал человек, команда не трогает даже
-        с ``--all``: там связь не угадана по артикулу, а указана — и
-        указана бывает как раз тогда, когда записей с таким артикулом
+        Строку, компонент которой выбрал человек — в библиотеке или
+        подтвердив подсказку, — команда не трогает даже с ``--all``: там
+        связь не угадана по артикулу, а указана — и указана бывает как раз
+        тогда, когда артикулы не совпали или записей с таким артикулом
         несколько и автоматика выбрала бы не ту.
         """
-        if item.component_match == MATCH_PICK:
+        if item.component_match in MANUAL_MATCHES:
             return False
 
         found = resolve({"gbt_pn": item.gbt_pn, "vendor_pn": item.vendor_pn,

@@ -5,9 +5,6 @@
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">
-    <a href="{% url 'components:list' category.slug %}">{{ category.table }}</a> · {{ category.title }}
-  </div>
   <div class="legend__row"><h1>Удалить компонент?</h1></div>
 </div>
 
@@ -39,7 +36,7 @@
         <span class="toolbar__spacer"></span>
       {% endif %}
       <button class="btn btn--danger" type="submit">Удалить безвозвратно</button>
-      <a class="btn btn--ghost" href="{{ object.get_absolute_url }}">Оставить как есть</a>
+      <a class="btn btn--ghost" href="{{ object.get_absolute_url }}">Отменить</a>
     </form>
   </div>
 
@@ -58,7 +55,7 @@
               <tr data-href="{{ entry.board.get_absolute_url }}">
                 <td class="pn">
                   <a class="rowlink" href="{{ entry.board.get_absolute_url }}">{{ entry.board.base_pn }}</a>
-                  {% if entry.current %}<span class="chip chip--table">текущий</span>{% endif %}
+                  {% if entry.current %}<span class="chip chip--table">в текущей ревизии</span>{% endif %}
                 </td>
                 <td class="desc">{{ entry.revisions|join:", " }}</td>
               </tr>
@@ -80,8 +77,8 @@
       <div class="tagcloud">
         {% if analogs %}
           <span class="muted">
-            В парной таблице {{ analogs|plural:"запись,записи,записей" }} с этим OY ID. Они не
-            удалятся, но останутся без оригинала — искать замену будет не к чему.
+            С этим OY ID в парной таблице — {{ analogs|plural:"запись,записи,записей" }}.
+            Удаление их не затронет, но замены останутся без оригинала.
           </span>
         {% else %}
           <span class="muted">Аналогов нет.</span>

@@ -90,7 +90,7 @@ class BaseComponent(ComponentSaveMixin, models.Model):
     # ссылка у компонента одна и ведёт себя как обычный параметр — поэтому
     # колонка добавлена в сами таблицы (sql/add_tracker_url.sql), а
     # отдельная таблица удалена.
-    tracker_url = text("Tracker URL", "Ссылка на Tracker")
+    tracker_url = text("Tracker URL", "Ссылка на трекер")
     author = text("Author")
     created = models.DateTimeField(db_column="Created", blank=True,
                                    null=True, verbose_name="Created")
@@ -594,7 +594,7 @@ class OptionField(models.Model):
     is_active = models.BooleanField(default=True, verbose_name="Активен")
 
     class Meta:
-        db_table = "oy_option_field"
+        db_table = "components_option_field"
         ordering = ("field", "id")
         # Одно имя везде: раньше раздел звался «Столбцы со списками», кнопка
         # — «Добавить выпадающий список», заголовок — «Изменить Выпадающий
@@ -635,7 +635,7 @@ class OptionValue(models.Model):
     is_active = models.BooleanField(default=True, verbose_name="Активно")
 
     class Meta:
-        db_table = "oy_option_value"
+        db_table = "components_option_value"
         ordering = ("option_field", "value")
         unique_together = ("option_field", "value")
         verbose_name = "Значение"
@@ -691,7 +691,7 @@ class ComponentChange(ComponentRefMixin, models.Model):
         max_length=64, verbose_name="Таблица компонента")
     component_id = models.IntegerField(verbose_name="Ключ компонента")
     author = models.CharField(max_length=150, blank=True, default="",
-                              verbose_name="Кто")
+                              verbose_name="Сотрудник")
     created = models.DateTimeField(auto_now_add=True, verbose_name="Когда")
     action = models.CharField(max_length=16, choices=ACTIONS, default=UPDATED,
                               verbose_name="Что произошло")
@@ -703,7 +703,7 @@ class ComponentChange(ComponentRefMixin, models.Model):
         help_text="Список полей: имя, подпись, старое значение, новое")
 
     class Meta:
-        db_table = "oy_component_change"
+        db_table = "components_component_change"
         # новые сверху: в карточке нужны последние правки
         ordering = ("-created", "-id")
         verbose_name = "Изменение компонента"
@@ -784,7 +784,7 @@ class FootprintImage(models.Model):
     created = models.DateTimeField(auto_now_add=True, verbose_name="Когда")
 
     class Meta:
-        db_table = "oy_footprint_image"
+        db_table = "components_footprint_image"
         ordering = ("footprint",)
         verbose_name = "Картинка посадочного места"
         verbose_name_plural = "Картинки посадочных мест"
@@ -875,8 +875,8 @@ class StepRenderJob(models.Model):
     STATUSES = [
         (QUEUED, "в очереди"),
         (RUNNING, "рисуется"),
-        (DONE, "готово"),
-        (FAILED, "не удалось"),
+        (DONE, "готова"),
+        (FAILED, "не удалась"),
         (SUPERSEDED, "заменена новой"),
     ]
     ACTIVE = (QUEUED, RUNNING)
@@ -919,7 +919,7 @@ class StepRenderJob(models.Model):
                                     verbose_name="Закончено")
 
     class Meta:
-        db_table = "oy_step_render_job"
+        db_table = "components_step_render_job"
         ordering = ("-created", "-id")
         verbose_name = "Рендер картинки"
         verbose_name_plural = "Рендеры картинок"

@@ -1,0 +1,8 @@
+{# Один блок CHANGELOG: абзац или список. Разметка уже в HTML — components/changelog.py #}
+{% if block.kind == "ul" %}
+  <ul>{% for item in block.items %}<li>{{ item }}</li>{% endfor %}</ul>
+{% elif block.kind == "ol" %}
+  <ol>{% for item in block.items %}<li>{{ item }}</li>{% endfor %}</ol>
+{% else %}
+  {% for item in block.items %}<p>{{ item }}</p>{% endfor %}
+{% endif %}

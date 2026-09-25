@@ -28,7 +28,7 @@
             <button class="btn" type="submit">Сделать текущей</button>
           </form>
         {% endif %}
-        <a class="btn" href="{% url 'boards:revision-edit' board.pk revision.number %}">Править карточку</a>
+        <a class="btn" href="{% url 'boards:revision-edit' board.pk revision.number %}">Редактировать карточку</a>
         {# кнопка про ревизию целиком; на первом чек-листе она пропадала бы, стоило открыть другую вкладку #}
         <a class="btn" href="{% url 'boards:checklist' board.pk revision.number %}">Заполнить чек-листы</a>
         <a class="btn btn--danger"
@@ -53,8 +53,8 @@
   <div class="panel">
     <div class="section__head">внешний вид</div>
     <div class="revcard__photos">
-      {% include "_shot.html" with photo=revision.photo_top caption="Top side" subject=revision.label side="сверху" %}
-      {% include "_shot.html" with photo=revision.photo_bottom caption="Bottom side" subject=revision.label side="снизу" %}
+      {% include "_shot.html" with photo=revision.photo_top caption="Вид сверху" subject=revision.label side="сверху" %}
+      {% include "_shot.html" with photo=revision.photo_bottom caption="Вид снизу" subject=revision.label side="снизу" %}
     </div>
   </div>
 
@@ -63,7 +63,7 @@
       <div class="section__head">
         карточка печатного узла
         {% if revision.approved %}
-          <span class="chip chip--added">утверждена {{ revision.approved_at|default:"" }}</span>
+          <span class="chip chip--added">утверждена {{ revision.approved_at|date:"d.m.Y" }}</span>
         {% else %}
           <span class="chip">не утверждена</span>
         {% endif %}
@@ -87,7 +87,7 @@
         <div><dt>Реестр МПТ</dt><dd>{{ revision.mpt_registry|default:"—" }}</dd></div>
         <div><dt>Обозначение на шелкографии</dt><dd>{{ revision.silkscreen|default:"—" }}</dd></div>
         <div><dt>Количество плат в мультизаготовке</dt><dd>{{ revision.panel_count|default:"—" }}</dd></div>
-        <div><dt>Децимальный номер узла печатного (PCBA)</dt><dd>{{ revision.decimal_pcba|default:"—" }}</dd></div>
+        <div><dt>Децимальный номер печатного узла (PCBA)</dt><dd>{{ revision.decimal_pcba|default:"—" }}</dd></div>
         <div><dt>Децимальный номер печатной платы (PCB)</dt><dd>{{ revision.decimal_pcb|default:"—" }}</dd></div>
         <div><dt>Вид печатной платы (из ПП РФ №719)</dt><dd>{{ revision.pcb_type|default:"—" }}</dd></div>
         <div><dt>Количество баллов</dt><dd>{{ revision.points|default:"—" }}</dd></div>
@@ -191,4 +191,50 @@
 {% endfor %}
 </div>
 
+{% comment %}
+  Краткая карточка ревизии — панель справа от списка ревизий в карточке
+  платы (detail.html). Не inline: на этой странице она не выводится, вид
+  отдаёт её отдельно (boards/views.py, revision_detail). Снимки — свои у
+  ревизии, а если своих нет ни одного — снимки платы, с пометкой: у
+  большинства ревизий своих снимков нет, и панель иначе почти всегда была
+  бы с заглушками. Смешивать стороны (свой верх, чужой низ) нельзя:
+  ревизии различаются монтажом, и такая пара выдавала бы себя за одну
+  плату.
+{% endcomment %}
+{% partialdef preview %}
+  <div class="preview__title">
+    <a class="mono" href="{{ revision.get_absolute_url }}">{{ revision.oy_pn|default:revision.label }}</a>
+  </div>
+  {% if revision.photo_top or revision.photo_bottom %}
+    {% include "boards/_preview_shots.html" with top=revision.photo_top bottom=revision.photo_bottom subject=revision.label %}
+  {% else %}
+    {% include "boards/_preview_shots.html" with top=board.photo_top bottom=board.photo_bottom subject=board.base_pn %}
+    {% if board.photo_top or board.photo_bottom %}
+      <p class="preview__note muted">Снимки платы — своих у ревизии нет.</p>
+    {% endif %}
+  {% endif %}
+  <dl class="specs">
+    <div><dt>Rev PCB</dt><dd>{{ revision.board_rev|cell }}</dd></div>
+    <div><dt>Rev BOM</dt><dd>{{ revision.bom_rev|cell }}</dd></div>
+    {% if revision.variant %}<div><dt>Исполнение</dt><dd>{{ revision.variant }}</dd></div>{% endif %}
+    <div><dt>Текущая</dt><dd>{% if revision.is_current %}да{% else %}нет{% endif %}</dd></div>
+    <div><dt>Утверждена</dt>
+      <dd>{% if revision.approved %}да{% if revision.approved_at %} · {{ revision.approved_at|date:"d.m.Y" }}{% endif %}{% else %}нет{% endif %}</dd></div>
+    <div><dt>Состав</dt>
+      <dd><a href="{% url 'boards:bom' board.pk revision.number %}">{{ position_count|plural:"позиция,позиции,позиций" }} · {{ item_count|plural:"строка,строки,строк" }}</a></dd></div>
+    <div><dt>Чек-листы</dt><dd>{{ checklist_done }}/{{ checklist_total }}</dd></div>
+    <div><dt>BOM загружен</dt>
+      <dd>{{ revision.imported_at|date:"d.m.Y"|default:"—" }}{% if revision.imported_by %} · {{ revision.imported_by }}{% endif %}</dd></div>
+    {% for label, value in revision.extra_facts %}
+      <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+    {% endfor %}
+  </dl>
+  <div class="preview__actions">
+    <a class="btn btn--primary" href="{{ revision.get_absolute_url }}">Открыть карточку</a>
+    <a class="btn" href="{% url 'boards:bom' board.pk revision.number %}">Состав BOM</a>
+    {% if can_edit_boards %}
+      <a class="btn" href="{% url 'boards:revision-edit' board.pk revision.number %}">Редактировать</a>
+    {% endif %}
+  </div>
+{% endpartialdef %}
 {% endblock %}

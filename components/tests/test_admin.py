@@ -223,7 +223,7 @@ class ComponentChangeAdminTests(SimpleTestCase):
 
     def test_component_link(self):
         cell = self.model_admin().component(self.change(component_title="R1"))
-        self.assertIn('href="/resistor/7/"', cell)
+        self.assertIn('href="/components/resistor/7/"', cell)
         self.assertIn(">R1</a> #7", cell)
 
     def test_deleted_component(self):
@@ -415,6 +415,19 @@ class OptionFieldFormTests(SimpleTestCase):
         everywhere = {c.table for c in source_categories("smt_tht")}
         self.assertEqual(everywhere, {c.table for c in CATEGORIES.values()
                                       if "smt_tht" in c.field_names})
+
+    def test_group_tables(self):
+        # у каждой группы свой список производителей: рабочая таблица
+        # вместе со своими заменами, у PCB замен нет
+        from ..options import group_tables
+        groups = group_tables("vendor")
+        self.assertIn(["RESISTOR", "z_RESISTOR"], groups)
+        self.assertIn(["PCB"], groups)
+        # каждая таблица со столбцом — ровно в одной группе
+        tables = [table for group in groups for table in group]
+        self.assertEqual(len(tables), len(set(tables)))
+        self.assertEqual(set(tables), {c.table for c in CATEGORIES.values()
+                                       if "vendor" in c.field_names})
 
     def test_parse_values(self):
         from ..options import parse_values

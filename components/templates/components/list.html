@@ -5,13 +5,26 @@
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">{{ category.title }}</div>
   <div class="legend__row">
     <h1 class="dbname">{{ category.table }}</h1>
     {% if category.replacement %}<span class="chip chip--replacement">замена</span>{% endif %}
     {% if category.read_only %}<span class="chip">только чтение</span>{% endif %}
     <span class="legend__count" id="list-count">{{ paginator.count|plural:"запись,записи,записей" }}</span>
     <span class="legend__actions">
+      {# журнал целиком, без фильтра по группе: сузить — на его странице #}
+      <a class="btn" href="{% url 'components:changes' %}">Журнал изменений</a>
+      {% comment %}
+        Служебные страницы библиотеки — рядом с журналом. Обе смотрят всю
+        библиотеку, а не группу: дубли ищутся между таблицами, ссылки
+        привязываются по артикулу. Кнопка — только тому, кому страница
+        открыта, иначе вела бы на отказ.
+      {% endcomment %}
+      {% if is_admin %}
+        <a class="btn" href="{% url 'components:duplicates' %}">Поиск дублей</a>
+      {% endif %}
+      {% if can_edit_components %}
+        <a class="btn" href="{% url 'components:link-import' %}">Импорт ссылок</a>
+      {% endif %}
       <a class="btn" id="list-export" href="{{ export_url }}">Выгрузить CSV</a>
       {% if can_edit_components and not category.read_only and not category.replacement %}
         <a class="btn btn--primary" href="{% url 'components:create' category.slug %}">Добавить компонент</a>
@@ -20,6 +33,7 @@
   </div>
 </div>
 
+<div class="listview">
 <div class="panel">
   {% comment %}
     Фрагмент panel — то, что отдаётся на запрос HTMX
@@ -45,9 +59,10 @@
     а заголовки мигали. Ответ тот же фрагмент panel: строки из него берёт
     hx-select, номера страниц — hx-select-oob. Сортировка обновляет панель
     целиком: выбранная колонка хранится в скрытых полях формы, и без
-    обновления следующий выбор фильтра сбросил бы сортировку. Ссылки на
-    карточки в строках через HTMX не ходят: карточка открывается целой
-    страницей.
+    обновления следующий выбор фильтра сбросил бы сортировку. Строки
+    по-прежнему ссылки на карточку; щелчок по строке показывает краткую
+    карточку в панели справа (см. #list-preview ниже), а без htmx —
+    карточку целиком.
 
     На время запроса приглушаются только строки (hx-indicator): гаснущие и
     загорающиеся заголовки выглядели как мигание. Число записей и ссылка на выгрузку стоят в шапке, вне
@@ -71,16 +86,47 @@
       <input type="hidden" name="sort" value="{{ sort }}">
       <input type="hidden" name="dir" value="{{ dir }}">
     {% endif %}
-    {% if request.GET %}
-      <a class="btn btn--reset" href="{% url 'components:list' category.slug %}">Сбросить</a>
+    {% comment %}
+      «Сбросить» — только пока список правда сужен (listing.filtering):
+      сняв все галочки, человек остаётся с ?per_page=… или сортировкой в
+      адресе, и кнопка висела бы, пока на неё не нажмут. Сортировку и
+      число строк сброс оставляет (querystring.reset_filters).
+
+      Число строк на странице — внизу, в строке переключателя страниц
+      (#list-pager), а не среди фильтров: это вид списка, а не отбор.
+      Список связан с формой атрибутом form (_page_size.html).
+    {% endcomment %}
+    {% if filtering %}
+      <a class="btn btn--reset" href="{% url 'components:list' category.slug %}{{ reset_query }}">Сбросить</a>
     {% endif %}
-    {% include "_page_size.html" %}
   </form>
 
   <div id="list-results">
-  {% if rows %}
-  <div class="table-wrap">
-    <table class="grid grid--list">
+  {% comment %}
+    Таблица и переключатель страниц выводятся и тогда, когда фильтр ничего
+    не нашёл: окошко таблицы всегда высотой в 25 строк (rows.js), и без
+    таблицы список на пустом результате съёживался — панель прыгала, а
+    переключатель уезжал вверх. Вместо строк — одна невидимая строка-образец
+    с теми же ячейками, что у настоящих: по ней rows.js мерит высоту строки
+    (она дробная и зависит от шрифтов ячеек — одна ячейка на всю ширину
+    дала бы другую). Сообщение «Ничего не нашлось» лежит поверх окошка.
+  {% endcomment %}
+  <div class="table-wrap table-wrap--list" data-rows="25">
+    {% comment %}
+      Колонки постоянной ширины — в знаках, из реестра (COLUMN_CHARS в
+      components/registry.py). Описанию достаётся остаток; сколько это,
+      CSS считает из суммы знаков и числа остальных колонок (grid--list в
+      app.css). table-fit — контейнер, от ширины которого считается
+      остаток: внутри окошка, чтобы полоса прокрутки в него не входила.
+    {% endcomment %}
+    <div class="table-fit">
+    <table class="grid grid--list"
+           style="--fixed-chars: {{ category.fixed_chars }}; --fixed-count: {{ category.fixed_count }};">
+      <colgroup>
+        {% for chars in category.column_widths %}
+          {% if chars %}<col style="--chars: {{ chars }};">{% else %}<col class="col--flex">{% endif %}
+        {% endfor %}
+      </colgroup>
       <thead{% if htmx_enabled %} hx-boost="true" hx-target="#list-panel" hx-swap="outerHTML" hx-indicator="#list-rows"{% endif %}>
         <tr>
           {% for name, label in columns %}
@@ -101,28 +147,36 @@
               </td>
             {% endfor %}
           </tr>
+        {% empty %}
+          <tr class="rows-probe" aria-hidden="true">
+            {% for name, label in columns %}
+              <td class="{% if name == 'description' %}desc{% else %}pn{% endif %}">
+                {% if forloop.first %}<a class="rowlink" tabindex="-1">{{ None|cell }}</a>{% else %}{{ None|cell }}{% endif %}
+              </td>
+            {% endfor %}
+          </tr>
         {% endfor %}
       </tbody>
     </table>
+    </div>
+    {% if not rows %}
+      <div class="empty empty--over">
+        <h2>Ничего не нашлось</h2>
+        <p class="muted">Смягчите фильтры или измените запрос{% if can_edit_components and not category.read_only and not category.replacement %} — либо заведите новый компонент{% endif %}.</p>
+        {% if can_edit_components and not category.read_only and not category.replacement %}
+          <a class="btn btn--primary" href="{% url 'components:create' category.slug %}">Добавить компонент</a>
+        {% endif %}
+        {% if category.replacement %}
+          <p class="muted">Замены заводятся из карточки основного компонента —
+             в блоке «аналоги по OY ID».</p>
+        {% endif %}
+      </div>
+    {% endif %}
   </div>
 
   <div id="list-pager"{% if htmx_enabled %} hx-boost="true" hx-target="#list-rows" hx-select="#list-rows" hx-select-oob="#list-pager" hx-swap="outerHTML" hx-indicator="#list-rows"{% endif %}>
-    {% include "_pagination.html" with only_pages=1 %}
+    {% include "_pagination.html" with only_pages=1 sizes=1 %}
   </div>
-
-  {% else %}
-    <div class="empty">
-      <h2>Ничего не нашлось</h2>
-      <p class="muted">Смягчите фильтры или измените запрос{% if can_edit_components and not category.read_only and not category.replacement %} — либо заведите новый компонент{% endif %}.</p>
-      {% if can_edit_components and not category.read_only and not category.replacement %}
-        <a class="btn btn--primary" href="{% url 'components:create' category.slug %}">Добавить компонент</a>
-      {% endif %}
-      {% if category.replacement %}
-        <p class="muted">Замены заводятся из карточки основного компонента —
-           в блоке «аналоги по OY ID».</p>
-      {% endif %}
-    </div>
-  {% endif %}
   </div>
   </div>
   {% if htmx_request %}
@@ -130,5 +184,26 @@
     <a class="btn" id="list-export" href="{{ export_url }}" hx-swap-oob="true">Выгрузить CSV</a>
   {% endif %}
   {% endpartialdef %}
+</div>
+{% comment %}
+  Краткая карточка выбранной строки — без ухода со списка. Панель
+  закреплена: стоит всегда, пока строка не выбрана — с подсказкой, и
+  таблица не меняет ширину от щелчка к щелчку. Содержимое отдаёт вид
+  карточки (detail.html#preview), подгружает его preview.js. Вне фрагмента
+  panel: смена фильтра или страницы обновляет список, а выбранная карточка
+  остаётся.
+
+  Только при htmx: без него строка ведёт на карточку целиком, как раньше,
+  и панель была бы вечной подсказкой. hx-sync — новый запрос отменяет
+  недошедший: при быстром листании стрелками панель не покажет
+  запоздавший ответ про прошлую строку.
+{% endcomment %}
+{% if htmx_enabled %}
+  <aside class="panel preview" id="list-preview" hx-sync="this:replace"
+         aria-label="Краткая карточка" aria-live="polite">
+    <p class="preview__note muted">Выберите компонент в списке — здесь появится
+      его краткая карточка. Стрелки <kbd>↑</kbd> <kbd>↓</kbd> переключают соседние строки.</p>
+  </aside>
+{% endif %}
 </div>
 {% endblock %}

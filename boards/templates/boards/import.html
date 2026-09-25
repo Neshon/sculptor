@@ -1,12 +1,12 @@
 {% extends "components/base.html" %}
 {% load crispy_forms_tags %}
 
-{% block title %}Импорт BOM{% endblock %}
+{% block title %}Загрузка BOM{% endblock %}
 
 {% block content %}
 <div class="legend">
   <div class="legend__eyebrow"><a href="{% url 'boards:list' %}">Платы</a></div>
-  <div class="legend__row"><h1>Импорт BOM</h1></div>
+  <div class="legend__row"><h1>Загрузка BOM</h1></div>
 </div>
 
 <div class="cols">
@@ -20,8 +20,8 @@
         {% endfor %}
       </div>
       <div class="formbar">
-        <button class="btn btn--primary" type="submit">Загрузить и разобрать</button>
-        <a class="btn btn--ghost" href="{% url 'boards:list' %}">Отмена</a>
+        <button class="btn btn--primary" type="submit">Загрузить BOM</button>
+        <a class="btn btn--ghost" href="{% url 'boards:list' %}">Отменить</a>
       </div>
     </form>
 
@@ -61,15 +61,15 @@
            а если её нет — по строке <span class="mono">Model Name : …</span>
            или по имени файла.</div>
       <div>Строка заголовков таблицы опознаётся по колонкам
-           <span class="mono">M/S</span> и артикулу — сама постановка колонок
-           и написание («I/N» или «Item Number», «Vendor P/N» или «Parts: Vendor PN»,
+           <span class="mono">M/S</span> и артикулу — порядок колонок
+           и их написание («I/N» или «Item Number», «Vendor P/N» или «Parts: Vendor PN»,
            «QTY» или «Quantity») значения не имеют.</div>
       <div>Строка <span class="mono">M</span> — основной компонент, идущие следом
            <span class="mono">S</span> — его замены. Если колонки M/S в файле
            нет вовсе, все строки считаются основными.</div>
       <div>Файлов можно выбрать сразу несколько: каждый разбирается отдельно,
            ошибка в одном не отменяет остальные.</div>
-      <div>Повторный импорт того же OY P/N добавляет новую ревизию платы,
+      <div>Повторная загрузка BOM с тем же OY PN добавляет новую ревизию платы,
            прежние остаются в истории.</div>
     </div>
   </div>

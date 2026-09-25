@@ -7,7 +7,7 @@
   <div class="legend__eyebrow">сводка по покупным позициям</div>
   <div class="legend__row">
     <h1 class="dbname">{{ item.oy_pn }}</h1>
-    <span class="legend__count">{{ rows|length }} наименований</span>
+    <span class="legend__count">{{ rows|length|plural:"наименование,наименования,наименований" }}</span>
     <span class="legend__actions">
       <a class="btn" href="?export=csv">Выгрузить CSV</a>
       <a class="btn btn--ghost" href="{{ item.get_absolute_url }}">К карточке</a>
@@ -21,8 +21,8 @@
       <table class="grid">
         <thead>
           <tr>
-            <th>OY P/N</th>
-            <th>GCT P/N</th>
+            <th>OY PN</th>
+            <th>GCT PN</th>
             <th>Описание</th>
             <th style="width:130px">Всего</th>
           </tr>

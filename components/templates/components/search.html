@@ -5,10 +5,9 @@
 
 {% block content %}
 <div class="legend">
-  <div class="legend__eyebrow">поиск по всем группам</div>
   <div class="legend__row">
     <h1>{% if term %}<span class="mono">{{ term }}</span>{% else %}Что ищем?{% endif %}</h1>
-    {% if term %}<span class="legend__count">{{ total }} совпадений</span>{% endif %}
+    {% if term %}<span class="legend__count">{{ total|plural:"совпадение,совпадения,совпадений" }}</span>{% endif %}
   </div>
 </div>
 
@@ -62,7 +61,7 @@
           <col style="width:16%"><col style="width:20%"><col style="width:24%">
         </colgroup>
         <thead>
-          <tr><th>Плата</th><th>Vendor P/N</th><th>Vendor</th><th>GBT P/N</th><th>Description</th></tr>
+          <tr><th>Плата</th><th>Vendor PN</th><th>Vendor</th><th>GBT PN</th><th>Description</th></tr>
         </thead>
         <tbody>
           {% for item in board_items %}

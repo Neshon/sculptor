@@ -24,6 +24,7 @@
 <script src="{% static 'components/file.js' %}" defer></script>
 <script src="{% static 'components/lightbox.js' %}" defer></script>
 <script src="{% static 'components/tabs.js' %}" defer></script>
+<script src="{% static 'components/rows.js' %}" defer></script>
 {% comment %}
   HTMX — после остальных скриптов. Склейка значений множественного фильтра
   от порядка уже не зависит: она перехватывает отправку на document, раньше
@@ -41,6 +42,8 @@
   {% endcomment %}
   <meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": true}'>
   <script src="{% static 'components/htmx.min.js' %}" defer></script>
+  {# краткая карточка рядом со списком: без htmx её не во что загрузить #}
+  <script src="{% static 'components/preview.js' %}" defer></script>
   <script src="{% static 'components/htmx-setup.js' %}" defer></script>
 {% endif %}
 </head>
@@ -49,10 +52,95 @@
 
 <header class="topbar">
   <div class="topbar__side">
+    {% comment %}
+      Меню разделов. Штатный popover, а не свой скрипт: закрытие по Esc и
+      по щелчку мимо, возврат фокуса на кнопку и слой поверх страницы
+      браузер делает сам, и меню работает, даже если скрипты не загрузились.
+      Панель стоит в верхнем слое (top layer), поэтому место в разметке —
+      рядом с кнопкой — на раскладку шапки не влияет.
+    {% endcomment %}
+    <button type="button" class="icon-btn topbar__menu" popovertarget="site-menu"
+            aria-label="Меню разделов" title="Разделы">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16"></path>
+      </svg>
+    </button>
+    <nav class="drawer" id="site-menu" popover aria-label="Разделы">
+      <div class="drawer__head">
+        <span class="drawer__title">Разделы</span>
+        <button type="button" class="drawer__close" popovertarget="site-menu"
+                popovertargetaction="hide" aria-label="Закрыть меню">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"></path>
+          </svg>
+        </button>
+      </div>
+      {% with section=nav_section %}
+        <a class="drawer__link {% if section == 'servers' %}is-active{% endif %}"
+           href="{% url 'servers:list' %}">
+          <span class="drawer__name">SERVERS</span>
+          <span class="drawer__note">Серверы, конфигурации и состав</span>
+        </a>
+        <a class="drawer__link {% if section == 'boards' %}is-active{% endif %}"
+           href="{% url 'boards:list' %}">
+          <span class="drawer__name">BOARDS</span>
+          <span class="drawer__note">Платы, ревизии и BOM</span>
+        </a>
+        <a class="drawer__link {% if section == 'components' %}is-active{% endif %}"
+           href="{% url 'components:dashboard' %}">
+          <span class="drawer__name">COMPONENTS</span>
+          <span class="drawer__note">Библиотека компонентов и замены</span>
+        </a>
+        {# раздел сотрудников открыт только администратору — остальным пункт вёл бы на отказ #}
+        {% if is_admin %}
+          <a class="drawer__link {% if section == 'users' and request.resolver_match.url_name != 'profile' %}is-active{% endif %}"
+             href="{% url 'users:roles' %}">
+            <span class="drawer__name">USERS</span>
+            <span class="drawer__note">Сотрудники, роли и журнал доступа</span>
+          </a>
+        {% endif %}
+      {% endwith %}
+    </nav>
     <a class="topbar__logo" href="{% url 'components:dashboard' %}">
       <img src="{% static 'components/logo-white.svg' %}" alt="OpenYard">
     </a>
-    <span class="topbar__version" title="Версия Sculptor — что в ней нового, см. CHANGELOG.md">v{{ app_version }}</span>
+    {% comment %}
+      Версия открывает «Что нового» — CHANGELOG.md (components/changelog.py).
+      С HTMX это окно поверх страницы: popover, как у меню разделов, —
+      Esc и щелчок мимо закрывают его без скриптов. Содержимое грузится
+      один раз, при первом открытии (hx-trigger «click once»): файл большой,
+      а нужен он редко. Без HTMX версия — ссылка на ту же историю страницей.
+    {% endcomment %}
+    {% if htmx_enabled %}
+      <button type="button" class="topbar__version" popovertarget="changelog"
+              title="Что нового в Sculptor"
+              hx-get="{% url 'components:changelog' %}" hx-trigger="click once"
+              hx-target="#changelog-body" hx-swap="innerHTML">v{{ app_version }}</button>
+      <div class="changelog-pop" id="changelog" popover role="dialog" aria-labelledby="changelog-title">
+        <div class="changelog-pop__head">
+          <span class="changelog-pop__title" id="changelog-title">Что нового</span>
+          <span class="toolbar__spacer"></span>
+          <a class="btn btn--small" href="{% url 'components:changelog' %}">Открыть страницей</a>
+          <button type="button" class="drawer__close" popovertarget="changelog"
+                  popovertargetaction="hide" aria-label="Закрыть">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18"></path>
+            </svg>
+          </button>
+        </div>
+        {# пока HTMX не принёс историю — ссылка на неё страницей, на случай отказа #}
+        <div class="changelog-pop__body" id="changelog-body">
+          <p class="muted">Загрузка… Если история не появилась —
+            <a href="{% url 'components:changelog' %}">откройте её страницей</a>.</p>
+        </div>
+      </div>
+    {% else %}
+      <a class="topbar__version" href="{% url 'components:changelog' %}"
+         title="Что нового в Sculptor">v{{ app_version }}</a>
+    {% endif %}
   </div>
 
   <form class="topbar__search" action="{% url 'components:search' %}" method="get" role="search">
@@ -73,7 +161,7 @@
       </svg>
     </button>
     {% if user.is_authenticated %}
-      <a href="{% url 'users:profile' %}" title="Профиль: роли, права, мои правки"><strong>{{ user.get_username }}</strong></a>
+      <a href="{% url 'users:profile' %}" title="Профиль: сведения о себе, мои правки, входы"><strong>{{ user.get_username }}</strong></a>
       <form action="{% url 'logout' %}" method="post">
         {% csrf_token %}
         <button type="submit" class="topbar__logout">выйти</button>
@@ -85,42 +173,15 @@
 </header>
 
 <div class="shell">
+  {% comment %}
+    Левая панель — только группы компонентов и замены. Между разделами
+    переходят меню в шапке, а журнал, дубли и импорт ссылок — кнопки над
+    списком группы. У плат, серверов и сотрудников панели нет: там она
+    отнимала бы ширину у таблиц, ничего не предлагая по делу.
+  {% endcomment %}
+  {% if nav_section == 'components' %}
   <nav class="rail">
     <div class="rail__scroll">
-      <div class="rail__title">Серверы</div>
-      {# в пунктах только имя раздела: пояснение осталось в подсказке #}
-      <a class="rail__link {% if request.resolver_match.app_name == 'servers' %}is-active{% endif %}"
-         href="{% url 'servers:list' %}" title="Серверы, их конфигурации и состав">
-        <span>SERVERS</span>
-      </a>
-      <a class="rail__link {% if request.resolver_match.app_name == 'boards' %}is-active{% endif %}"
-         href="{% url 'boards:list' %}" title="Платы">
-        <span>BOARDS</span>
-      </a>
-      {% if is_admin %}
-        <a class="rail__link {% if request.resolver_match.url_name == 'duplicates' %}is-active{% endif %}"
-           href="{% url 'components:duplicates' %}" title="Дубли">
-          <span>DUPLICATES</span>
-        </a>
-      {% endif %}
-      {% if can_edit_components %}
-        <a class="rail__link {% if request.resolver_match.url_name == 'link-import' %}is-active{% endif %}"
-           href="{% url 'components:link-import' %}" title="Импорт ссылок">
-          <span>LINKS</span>
-        </a>
-      {% endif %}
-      <a class="rail__link {% if request.resolver_match.url_name == 'changes' %}is-active{% endif %}"
-         href="{% url 'components:changes' %}" title="Журнал изменений">
-        <span>CHANGES</span>
-      </a>
-      {% if is_admin %}
-        <a class="rail__link {% if request.resolver_match.app_name == 'users' and request.resolver_match.url_name != 'profile' %}is-active{% endif %}"
-           href="{% url 'users:roles' %}" title="Сотрудники, роли и журнал доступа">
-          <span>USERS</span>
-        </a>
-      {% endif %}
-      <div class="rail__divider"></div>
-
       <div class="rail__title">Группы компонентов</div>
       {% for c in nav_categories %}
         {# только имя таблицы: русское название осталось в подсказке #}
@@ -139,6 +200,7 @@
       {% endfor %}
     </div>
   </nav>
+  {% endif %}
 
   <main class="main">
     {% block content %}{% endblock %}
@@ -200,13 +262,28 @@
     }, 400);
   });
 
-  // карточка открывается кликом по любому месту строки
+  // Карточка открывается кликом по любому месту строки. В списке
+  // компонентов сначала спрашиваем краткую карточку справа (preview.js):
+  // взялась — остаёмся на списке. Ссылка-имя в первой ячейке ведёт себя
+  // так же, иначе самый частый щелчок — по артикулу — уводил бы со
+  // списка. Ctrl и средняя кнопка — по-прежнему карточка в новой вкладке;
+  // Enter на ссылке (detail === 0) — по-прежнему переход: панель стоит в
+  // конце страницы, и с клавиатуры до неё было бы не добраться
   document.addEventListener('click', function (event) {
-    if (event.target.closest('a, button, input, label, select')) { return; }
     const row = event.target.closest('tr[data-href]');
     if (!row) { return; }
+    const control = event.target.closest('a, button, input, label, select');
+    const rowlink = control && control.matches('a.rowlink');
+    if (control && !rowlink) { return; }
     if (window.getSelection && String(window.getSelection()).length > 0) { return; }
-    if (event.metaKey || event.ctrlKey || event.button === 1) {
+    const apart = event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1;
+    if (!apart && event.detail > 0 && window.OY && typeof window.OY.openPreview === 'function'
+        && window.OY.openPreview(row)) {
+      event.preventDefault();
+      return;
+    }
+    if (rowlink) { return; }  // ссылка: браузер перейдёт сам, куда просили
+    if (apart) {
       window.open(row.dataset.href, '_blank', 'noopener');
     } else {
       window.location.href = row.dataset.href;

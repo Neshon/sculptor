@@ -64,7 +64,7 @@
       </div>
       <div class="formbar">
         <button class="btn btn--primary" type="submit">Сохранить позицию</button>
-        <a class="btn btn--ghost" href="{% url 'boards:bom' board.pk revision.number %}">Отмена</a>
+        <a class="btn btn--ghost" href="{% url 'boards:bom' board.pk revision.number %}">Отменить</a>
         {% if item %}
           <span class="toolbar__spacer"></span>
           {% comment %}
@@ -87,23 +87,18 @@
     <div class="panel">
       <div class="section__head">выбранный компонент</div>
       <dl class="specs specs--tight">
-        <div><dt>Vendor P/N</dt><dd>{{ component.vendor_pn|cell }}</dd></div>
+        <div><dt>Vendor PN</dt><dd>{{ component.vendor_pn|cell }}</dd></div>
         <div><dt>Vendor</dt><dd>{{ component.vendor|cell }}</dd></div>
         <div><dt>OY ID</dt><dd>{{ component.oy_id|cell }}</dd></div>
-        <div><dt>OY P/N</dt><dd>{{ component.oy_pn|cell }}</dd></div>
-        <div><dt>GBT P/N</dt><dd>{{ component.gbt_pn|cell }}</dd></div>
+        <div><dt>OY PN</dt><dd>{{ component.oy_pn|cell }}</dd></div>
+        <div><dt>GBT PN</dt><dd>{{ component.gbt_pn|cell }}</dd></div>
         <div><dt>Description</dt><dd>{{ component.description|cell }}</dd></div>
         <div><dt>SMT/THT</dt><dd>{{ component.smt_tht|cell }}</dd></div>
       </dl>
       <div class="hints" style="padding:20px 24px">
-        <div>Эти поля строка берёт из карточки, и править их здесь нельзя:
-             иначе она ссылалась бы на один компонент, а называлась по другому.
-             Заполняется то, что принадлежит плате, — позиция, обозначения,
-             количество.</div>
-        <div>Переносятся они один раз, при добавлении. Состав — документ, и
-             последующие правки в библиотеке его не меняют; что в ней сейчас,
-             видно на <a href="{{ component.get_absolute_url }}">карточке
-             компонента</a>.</div>
+        <div>Эти поля берутся из <a href="{{ component.get_absolute_url }}">карточки
+             компонента</a> при добавлении и здесь не редактируются. Заполните
+             позицию, обозначения и количество.</div>
         {% if not item %}
           <div><a href="{% url 'boards:item-pick' board.pk revision.number %}">Выбрать другой компонент</a></div>
         {% endif %}
@@ -113,26 +108,22 @@
     <div class="panel">
       <div class="section__head">откуда взялись значения</div>
       <dl class="specs specs--tight">
-        <div><dt>Vendor P/N</dt><dd>{{ item.vendor_pn|cell }}</dd></div>
+        <div><dt>Vendor PN</dt><dd>{{ item.vendor_pn|cell }}</dd></div>
         <div><dt>Vendor</dt><dd>{{ item.vendor|cell }}</dd></div>
         <div><dt>OY ID</dt><dd>{{ item.oy_id|cell }}</dd></div>
-        <div><dt>GBT P/N</dt><dd>{{ item.gbt_pn|cell }}</dd></div>
+        <div><dt>GBT PN</dt><dd>{{ item.gbt_pn|cell }}</dd></div>
         <div><dt>Description</dt><dd>{{ item.description|cell }}</dd></div>
       </dl>
       <div class="hints" style="padding:20px 24px">
-        <div>Артикулы здесь не правятся: они пришли вместе со строкой — из
-             BOM-файла или из карточки компонента, который выбрали при
-             добавлении, — и состав показывается так, как его выпустили.
-             Чтобы значения из файла изменились, загрузите исправленный файл
-             следующей ревизией.</div>
+        <div>Артикулы здесь не редактируются. Чтобы их изменить, загрузите
+             исправленный BOM следующей ревизией.</div>
         {% if item.is_linked %}
           <div>Строка связана с <a href="{{ item.library_url }}">карточкой компонента</a> —
                там видно, что в библиотеке сейчас.</div>
         {% else %}
           <div>Компонента с таким артикулом в библиотеке не нашлось, поэтому в
                составе строка помечена <span class="chip">?</span>. Связь
-               появится сама, когда компонент заведут: её пересчитывает
-               <span class="mono">manage.py relink_boards</span>.</div>
+               появится, когда компонент заведут в библиотеке.</div>
         {% endif %}
       </div>
     </div>

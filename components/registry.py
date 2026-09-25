@@ -25,6 +25,75 @@ BASE_COLUMNS = ["vendor_pn", "oy_id", "gbt_pn", "description", "vendor", "packag
 # замыкают строку: в таблицах замен этих полей нет, и они просто не выведутся
 TAIL_COLUMNS = ["allegro_schematic_part", "allegro_pcb_footprint"]
 
+# Ширина колонок списка — в знаках моноширинного шрифта данных.
+#
+# Постоянная, а не по содержимому: браузер раскладывал колонки по тому, что
+# попало на страницу, и растягивал их на всё окно, поэтому один и тот же
+# список выглядел по-разному на разных экранах и даже на соседних страницах.
+# Теперь колонки одинаковые везде, а разница в ширине окна уходит в
+# описание (FLEX_COLUMN) — где места мало, таблица прокручивается вбок.
+#
+# Числа взяты из данных: сколько знаков у 90–98 % значений колонки. Более
+# длинное подрезается многоточием, целиком оно в подсказке ячейки. Колонка
+# не у́же самого длинного слова своего заголовка — см. column_chars.
+COLUMN_CHARS = {
+    "vendor_pn": 20,
+    "oy_id": 12,
+    "gbt_pn": 16,
+    "vendor": 12,
+    "package": 9,
+    "subgroup": 16,
+    "connector_type": 17,
+    "interface": 12,
+    "input_voltage_v": 12,
+    "output_voltage_v": 12,
+    "allegro_schematic_part": 22,
+    "allegro_pcb_footprint": 24,
+}
+# параметры группы: номиналы, допуски, напряжения — почти все до 10 знаков
+DEFAULT_COLUMN_CHARS = 10
+# колонка, которой достаётся вся оставшаяся ширина
+FLEX_COLUMN = "description"
+# место под стрелку сортировки рядом с подписью, в тех же знаках
+SORT_MARK_CHARS = 2
+# Шапка таблицы — ровно в столько строк (высоту держит app.css). Знак
+# заголовка считаем шириной со знак данных: на деле он чуть уже (Verdana
+# 10px прописными против Roboto Mono 12px), и расчёт выходит с запасом
+HEADER_LINES = 2
+
+
+def header_lines(label, width):
+    """Сколько строк займёт заголовок при переносе по словам в ``width`` знаков."""
+    lines, line = 0, 0
+    for word in str(label).split():
+        if line and line + 1 + len(word) <= width:
+            line += 1 + len(word)
+        else:
+            lines, line = lines + 1, len(word)
+    return lines
+
+
+def column_chars(name, label, base=None):
+    """Ширина колонки в знаках: по данным, но чтобы заголовок встал в шапку.
+
+    Заголовок переносится только по пробелам. Слово длиннее колонки
+    («dissipation,») вылезло бы на соседнюю, а заголовок в три строки
+    («Output Current, A» в 10 знаках) выше шапки, — в обоих случаях
+    колонка расширяется, пока заголовок не уместится в HEADER_LINES строк.
+
+    ``base`` — ширина по данным, если колонка не из таблиц компонентов:
+    списки плат и ревизий знают её сами (boards/listing.py), а правило
+    шапки у всех списков одно.
+    """
+    longest = max((len(word) for word in str(label).split()), default=0)
+    if base is None:
+        base = COLUMN_CHARS.get(name, DEFAULT_COLUMN_CHARS)
+    chars = max(base, longest + SORT_MARK_CHARS)
+    while header_lines(label, chars - SORT_MARK_CHARS) > HEADER_LINES:
+        chars += 1
+    return chars
+
+
 # Порядок полей для карточки и выгрузки.
 #
 # Общие поля объявлены в абстрактном классе, поэтому в ``_meta.fields`` они
@@ -65,6 +134,12 @@ class Category:
     # ниже — вычисляется в __post_init__, извне не задаётся
     columns: tuple = field(default=(), init=False)
     verbose_columns: tuple = field(default=(), init=False)
+    # ширины колонок списка по порядку: знаки или None у FLEX_COLUMN
+    column_widths: tuple = field(default=(), init=False)
+    # сумма знаков и число колонок постоянной ширины: из них CSS считает,
+    # сколько остаётся описанию
+    fixed_chars: int = field(default=0, init=False)
+    fixed_count: int = field(default=0, init=False)
     filters: tuple = field(default=(), init=False)
     all_field_names: tuple = field(default=(), init=False)
     # собственные поля модели: набор нужен почти всем обходам таблиц,
@@ -87,6 +162,12 @@ class Category:
         self._set("columns", tuple(columns))
         self._set("verbose_columns",
                   tuple((n, meta.get_field(n).verbose_name) for n in columns))
+        widths = tuple(None if name == FLEX_COLUMN else column_chars(name, label)
+                       for name, label in self.verbose_columns)
+        self._set("column_widths", widths)
+        fixed = [w for w in widths if w is not None]
+        self._set("fixed_chars", sum(fixed))
+        self._set("fixed_count", len(fixed))
         self._set("filters",
                   tuple((n, meta.get_field(n).verbose_name)
                         for n in self.filter_fields if n in own))

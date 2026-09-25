@@ -18,8 +18,10 @@
 вместе с ним и убран: угадывать больше нечего.
 """
 
+from components import similar
+from components.db import unavailable
 from components.matching import usable
-from components.registry import scan
+from components.registry import category_by_table, scan
 
 # порядок правил: сначала внутренний номер, затем артикул производителя
 MATCH_GBT = "gbt"
@@ -28,13 +30,23 @@ MATCH_VENDOR = "vendor"
 # библиотеке. Оно надёжнее двух предыдущих — сравнивать артикулы не надо,
 # запись известна, — и по нему видно, что связь не угадана
 MATCH_PICK = "pick"
+# И это тоже связь, поставленная человеком: строка из BOM-файла не нашла
+# пары, а человек подтвердил подсказку (см. hints_for). Отдельным кодом, а
+# не MATCH_PICK: поля строки здесь из файла, а не из карточки, и по
+# подписи должно быть видно, что пару подобрали по подсказке
+MATCH_HINT = "hint"
+# Связи, указанные человеком. Пересчёт по артикулам (relink_boards) их не
+# трогает: указывают их как раз тогда, когда артикулы не совпали или
+# записей с ними несколько, и автоматика выбрала бы не то
+MANUAL_MATCHES = (MATCH_PICK, MATCH_HINT)
 
 # Как правила называть людям. В базе — короткие коды, и выбором поля
 # (choices) их не сделать: смена choices у поля — миграция ради подписей.
 MATCH_LABELS = {
-    MATCH_GBT: "по GBT P/N",
-    MATCH_VENDOR: "по Vendor P/N и Vendor",
+    MATCH_GBT: "по GBT PN",
+    MATCH_VENDOR: "по Vendor PN и Vendor",
     MATCH_PICK: "выбран в библиотеке",
+    MATCH_HINT: "подтверждён по подсказке",
 }
 # пустое правило — связи нет: компонента в библиотеке не нашлось
 NO_MATCH_LABEL = "не сопоставлено"
@@ -70,7 +82,7 @@ def component_values(obj):
 
 
 def build_index():
-    """Готовит два словаря: по GBT P/N и по паре Vendor P/N + Vendor."""
+    """Готовит два словаря: по GBT PN и по паре Vendor PN + Vendor."""
     by_gbt, by_vendor = {}, {}
 
     for category, values in scan(("id", "gbt_pn", "vendor_pn", "vendor")):
@@ -117,3 +129,74 @@ def link_items(items, index=None):
         item["component_match"] = match
         linked += int(pk is not None)
     return linked
+
+
+# --- подсказки для строк без пары -------------------------------------------
+#
+# Импорт связывает строку, только если артикул нашёлся точно. Остальные
+# остаются «не сопоставлено», хотя часто компонент в библиотеке есть, просто
+# записан иначе: «2N7002KTB_R1» в BOM против «2N7002KTB», другой
+# разделитель, или тот же Vendor PN, но производитель написан по-другому
+# («TI» и «Texas Instruments»). Подсказки показывают такие пары, а связь
+# ставит человек — угаданная связь в составе хуже отсутствующей.
+
+HINT_LIMIT = 3
+
+# по каким полям строки ищем похожее; GBT PN первым — как и в resolve()
+HINT_FIELDS = (("gbt_pn", "GBT PN"), ("vendor_pn", "Vendor PN"))
+
+# что показать рядом с подсказкой, чтобы решить, та ли это деталь
+DETAIL_FIELDS = ("vendor", "description")
+
+
+def hints_for(item, prepared, limit=HINT_LIMIT):
+    """Похожие артикулы библиотеки для строки состава без связи.
+
+    ``item`` — строка состава (или что угодно с полями ``gbt_pn`` и
+    ``vendor_pn``), ``prepared`` — ``similar.prepare(similar.library_index())``.
+    Возвращает подсказки ``similar.hint`` с полем ``field``: по какому
+    артикулу строки найдено.
+
+    Только точные правила — тот же артикул, другие разделители, суффикс
+    упаковки. Нестрогое сравнение здесь выключено: на живом составе все
+    «похожие артикулы» оказались соседними номиналами и допусками
+    («GRM31CR61E226KE15L» → «…ME15D»), а опечаток в BOM, выгруженном из
+    САПР, почти не бывает. Ложная подсказка тут хуже отсутствующей.
+    """
+    best = {}
+    for name, label in HINT_FIELDS:
+        pn = usable(getattr(item, name, ""))
+        if not pn:
+            continue
+        for key, entry, score, reason in similar.similar(pn, prepared,
+                                                         fuzzy=False):
+            # одна запись находится по обоим полям — остаётся лучшая оценка
+            if key not in best or score > best[key]["score"]:
+                best[key] = {**similar.hint(entry, score, reason),
+                             "field": label}
+    # при равной оценке остаётся порядок полей: совпадение по GBT PN выше
+    return sorted(best.values(), key=lambda hint: -hint["score"])[:limit]
+
+
+def hint_details(hints):
+    """``{(таблица, ключ): {"vendor", "description"}}`` для пачки подсказок.
+
+    Один запрос на таблицу, а не на подсказку: на странице их десятки.
+    Недоступная таблица не роняет страницу — у её подсказок просто не
+    будет подробностей.
+    """
+    by_table = {}
+    for hint in hints:
+        by_table.setdefault(hint["table"], set()).add(hint["pk"])
+
+    details = {}
+    for table, keys in by_table.items():
+        category = category_by_table(table)
+        if category is None:
+            continue
+        fields = category.available(("id", *DETAIL_FIELDS))
+        with unavailable(table):
+            for row in (category.model.objects.filter(pk__in=keys)
+                        .order_by().values(*fields)):
+                details[(table, row.pop("id"))] = row
+    return details

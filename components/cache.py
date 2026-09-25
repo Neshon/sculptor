@@ -44,8 +44,6 @@ COUNTS_KEY = "components:counts"
 OPTIONS_KEY = "components:options:{table}"
 # значения, подставляемые в форму нового компонента
 DEFAULTS_KEY = "components:defaults:{table}"
-# показатель «насколько состав плат опирается на библиотеку»
-COVERAGE_KEY = "boards:coverage"
 
 _MISSING = object()
 

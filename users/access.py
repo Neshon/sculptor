@@ -118,6 +118,22 @@ def on_logout(sender, request, user, **kwargs):
     record(AccessEvent.LOGOUT, user.get_username(), request)
 
 
+# ---- учётные записи ------------------------------------------------------------
+
+def on_user_saved(sender, instance, created, raw=False, **kwargs):
+    """Заведён сотрудник — на странице «Новый сотрудник», в админке, командой.
+
+    Сигналом, как и роли: учётную запись заводят не одним путём, и журнал
+    должен видеть каждый. ``raw`` — загрузка фикстур: это не заведение
+    человека, а перенос данных.
+    """
+    if not created or raw:
+        return
+    from .models import AccessEvent
+    record(AccessEvent.USER_CREATED, instance.get_username(),
+           actor=current_actor())
+
+
 # ---- роли --------------------------------------------------------------------
 
 def role_changes(current, wanted):
